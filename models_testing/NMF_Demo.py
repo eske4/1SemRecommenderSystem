@@ -4,17 +4,20 @@ import scipy.sparse as sps
 from sklearn.decomposition import NMF
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import root_mean_squared_error
-import statistics as st
 
 def load_interactions(file_path, chunksize=10**6):
+    #These lists will store the numerical indices for users and songs, and the corresponding play counts
     user_indices = []
     song_indices = []
     play_counts = []
+    # These dictionaries will map the original user_id and song_id to unique numerical indices
     user_id_to_index = {}
     song_id_to_index = {}
+    # Counters to assign unique numerical indices to users and songs
     user_index = 0
     song_index = 0
 
+    # Reads the CSV File in Chunks
     for chunk in pd.read_csv(file_path, chunksize=chunksize, dtype={'user_id': str, 'track_id': str, 'playcount': int}, low_memory=False):
         for _, row in chunk.iterrows():
             user_id = row['user_id']
@@ -40,6 +43,7 @@ def load_interactions(file_path, chunksize=10**6):
 
     return user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index
 
+# Calculates and displays statistics about the sparsity of the user-song interaction matrix
 def compute_sparsity_statistics(interactions_df, num_users, num_songs):
     total_entries = num_users * num_songs
     num_nonzero_original = len(interactions_df)
@@ -53,16 +57,17 @@ def compute_sparsity_statistics(interactions_df, num_users, num_songs):
     print(f"Density: {density:.4%}")
     print(f"Sparsity: {sparsity:.4%}")
 
+# Provide insights into the distribution and variability of play counts,
 def compute_training_statistics(train_interactions):
     train_values = train_interactions['play_count'].values
     mean_train = np.mean(train_values)
     median_train = np.median(train_values)
-    std_train = np.std(train_values, ddof=1)  # Use ddof=1 for sample standard deviation
+    std_train = np.std(train_values, ddof=1)
     print(f"Training values - Mean: {mean_train}, Median: {median_train}, Std Dev: {std_train}")
 
 # Main code
 # Load interactions
-user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index = load_interactions('User Listening History 500K.csv')
+user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index = load_interactions('User Listening History 100K.csv')
 
 # Create a DataFrame of interactions
 interactions_df = pd.DataFrame({
@@ -70,6 +75,9 @@ interactions_df = pd.DataFrame({
     'song_idx': song_indices,
     'play_count': play_counts
 })
+
+# Binarize the play counts
+interactions_df['play_count'] = 1
 
 # Compute sparsity statistics
 num_users = len(user_id_to_index)
@@ -102,7 +110,7 @@ for rank in range(5, 20):
     nmf_model = NMF(
         n_components=rank,
         init='nndsvda',
-        solver='mu',  # Use 'mu' solver for sparse input
+        solver='cd',  # Use 'mu' solver for sparse input
         beta_loss='frobenius',
         max_iter=500,
         random_state=0,
@@ -120,6 +128,9 @@ for rank in range(5, 20):
     
     predicted_values = np.sum(W[test_user_indices, :] * H[:, test_song_indices].T, axis=1)
     
+    # Clip predicted values to the range [0, 1] since we're dealing with binary data
+    predicted_values = np.clip(predicted_values, 0, 1)
+
     # Inspect Predicted Values for Test Set
     print(f"First 10 predicted values: {predicted_values[:10]}")
     print(f"First 10 actual test values: {test_play_counts[:10]}")
