@@ -8,14 +8,14 @@ def load_csv_files():
     return df, df2
 
 
-def load_tag_dictionary(file_path):
-    """Load tags from a text file into a dictionary."""
-    tags_to_index = {}
+def load_dictionary(file_path, delimiter="\t", key_type=str, value_type=int):
+    """Load key-value pairs from a text file into a dictionary."""
+    dictionary = {}
     with open(file_path, "r") as f:
         for line in f:
-            tag, index = line.strip().split(": ")
-            tags_to_index[tag] = int(index)
-    return tags_to_index
+            key, value = line.strip().split(delimiter)
+            dictionary[key_type(key.strip())] = int(value.strip())
+    return dictionary
 
 
 def replace_tags_with_index(tag_array, tags_to_index):
@@ -29,27 +29,24 @@ def replace_tags_with_index(tag_array, tags_to_index):
     ]  # Strip spaces and get index
 
 
-def load_id_mappings(file_path):
-    """Load ID mappings from a text file into a dictionary."""
-    ids = {}
-    with open(file_path, "r") as file:
-        for line in file:
-            key, value = line.strip().split(":")
-            ids[key.strip()] = int(value.strip())  # Strip spaces and convert to int
-    return ids
-
-
-def map_ids(df, track_ids, user_ids):
+def remap_listening_history(df, track_ids, user_ids):
     """Map track and user IDs in the DataFrame."""
     df["track_id"] = df["track_id"].map(track_ids)
     df["user_id"] = df["user_id"].map(user_ids)
 
 
-def preprocess_music_info(df2, track_ids, tags_to_index):
+def remap_music_info(df2, track_ids, genres, artists, names, tags_to_index):
     """Preprocess the second DataFrame for music info."""
     df2["track_id"] = df2["track_id"].map(track_ids)
+    df2["name"] = df2["name"].map(names)
+    df2["genre"] = df2["genre"].map(genres)
+    df2["artist"] = df2["artist"].map(artists)
     df2["tags"] = df2["tags"].apply(lambda x: replace_tags_with_index(x, tags_to_index))
-    return df2.drop(columns=["spotify_preview_url", "spotify_id"], errors="ignore")
+
+    # Drop specified columns in place
+    df2.drop(
+        columns=["spotify_preview_url", "spotify_id"], errors="ignore", inplace=True
+    )
 
 
 def save_dataframes_to_txt(df, df2):
@@ -71,13 +68,16 @@ def main():
     df, df2 = load_csv_files()
 
     # Step 2: Load mappings
-    tags_to_index = load_tag_dictionary("data/tags.txt")
-    track_ids = load_id_mappings("data/track_ids.txt")
-    user_ids = load_id_mappings("data/user_ids.txt")
+    tags_to_index = load_dictionary("data/tags.txt")
+    track_ids = load_dictionary("data/track_ids.txt")
+    user_ids = load_dictionary("data/user_ids.txt")
+    genres = load_dictionary("data/genres.txt")
+    artists = load_dictionary("data/artists.txt")
+    names = load_dictionary("data/names.txt")
 
-    # Step 3: Map IDs in the DataFrames
-    map_ids(df, track_ids, user_ids)
-    df2 = preprocess_music_info(df2, track_ids, tags_to_index)
+    # Step 3: Map data in the DataFrames
+    remap_listening_history(df, track_ids, user_ids)
+    remap_music_info(df2, track_ids, genres, artists, names, tags_to_index)
 
     # Optional: Drop columns based on a condition
     with_genre = False
