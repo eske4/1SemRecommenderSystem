@@ -3,4 +3,3 @@ scipy
 scikit-learn
 tensorflow
 pandas
-pprint
