@@ -9,6 +9,7 @@ Follow these steps to set up the project locally:
 ### 1. **Download the Dataset**
 
 Obtain the dataset from [Kaggle](https://www.kaggle.com/datasets/undefinenull/million-song-dataset-spotify-lastfm).
+
 ---
 
 ### 2. **Activate Python Virtual Environment**
@@ -30,6 +31,7 @@ You should create a Python virtual environment to isolate the project dependenci
    venv\Scripts\activate
    ```
 ---
+
 ### 3. **Install packages**
 
 Now, install the required packages by running the following command. Ensure you are in the project's root directory, where the `setup.py` file is located:
@@ -37,13 +39,16 @@ Now, install the required packages by running the following command. Ensure you 
 pip install -r requirements.txt
 ```
 ---
+
 ### 4. **Prepare the Data Directory**
    1. In the root directory same place as setup.py run the following command
       - mkdir data
 
    2. The directory structure should look like this:
    ![Dataset structure](images/dataset_setup.png)
+
 ---
+
 ### 5. **Run `setup.py`**
    After preparing the dataset, run the setup.py script to set up any additional configuration:
 
