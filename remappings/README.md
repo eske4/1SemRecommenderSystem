@@ -2,7 +2,7 @@
 
 #### 1. **run.py**
 
-The `run.py` script is responsible for remapping data into indexed numbers. This is useful for converting categorical or string-based data into numerical indices that can be more efficiently processed by machine learning models or data analysis tools. Additionally, this script provides functionality to preview how the remapped data appears.
+The `run.py` script is responsible for remapping data into indexed numbers. This is useful for converting categorical or string-based data into numerical indices that can be more efficiently processed by machine learning models or data analysis tools.
 
 #### 2. **preview.py**
 
