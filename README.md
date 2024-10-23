@@ -42,7 +42,7 @@ pip install -r requirements.txt
 
 ### 4. **Prepare the Data Directory**
    1. In the root directory same place as setup.py run the following command
-      - ```bash
+        ```bash
         mkdir data
         ```
 
