@@ -29,7 +29,7 @@ You should create a Python virtual environment to isolate the project dependenci
    venv\Scripts\activate
    ```
 
-Now, install the required packages by running the following command. Ensure you are in the project's root directory, where the setup.py file is located:
+Now, install the required packages by running the following command. Ensure you are in the project's root directory, where the `setup.py` file is located:
 ```bash
 pip install -r requirements.txt
 ```
