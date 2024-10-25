@@ -76,7 +76,7 @@ model.compile(
 model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
 
 # example user parameters for singular song (e.g. track_id 0)
-user_input = np.array([[0.355, 0.918, 0.24, 148.114, -4.36]])
+user_input = np.array([[0.755, 0.218, 0.64, 80.114, 0.0]])
 user_input_scaled = scaler.transform(user_input)
 
 # number of songs wanted to be recommended to user
