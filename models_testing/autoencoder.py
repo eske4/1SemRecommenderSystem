@@ -1,10 +1,11 @@
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 
 
 def load_csv(path, max_rows=None):
-    return np.genfromtxt(path, delimiter=",", skip_header=1, max_rows=max_rows)
+    return pd.read_csv(path, delimiter="\t", nrows=max_rows).to_numpy()
 
 
 # Data preparation function
@@ -69,7 +70,7 @@ def recommend_items_with_diversity(user_id, U, V, R, diversity_weight, top_n=5):
 # Example usage
 if __name__ == "__main__":
     # Example data - replace with your actual data
-    R = load_csv("data/Music Info.csv", 10000)
+    R = load_csv("../remappings/data/Modified_Music_info.txt", 10000)
 
     # Prepare data
     data_normalized, scaler = prepare_data(R)
