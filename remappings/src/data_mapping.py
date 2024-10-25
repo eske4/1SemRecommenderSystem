@@ -11,7 +11,7 @@ def load_csv_files():
 def load_dictionary(file_path, delimiter="\t", key_type=str, value_type=int):
     """Load key-value pairs from a text file into a dictionary."""
     dictionary = {}
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             key, value = line.strip().split(delimiter)
             dictionary[key_type(key.strip())] = int(value.strip())
