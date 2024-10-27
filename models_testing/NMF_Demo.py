@@ -1,153 +1,142 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 import scipy.sparse as sps
 from sklearn.decomposition import NMF
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import root_mean_squared_error
 
-def load_interactions(file_path, chunksize=10**6):
-    #These lists will store the numerical indices for users and songs, and the corresponding play counts
-    user_indices = []
-    song_indices = []
-    play_counts = []
-    # These dictionaries will map the original user_id and song_id to unique numerical indices
-    user_id_to_index = {}
-    song_id_to_index = {}
-    # Counters to assign unique numerical indices to users and songs
-    user_index = 0
-    song_index = 0
+def read_data(file_path):
+    data = pd.read_csv(
+        file_path,
+        sep='\t',
+        dtype={'track_id': int, 'user_id': int, 'playcount': int},
+        nrows=1000  # Adjust or remove nrows to read more data
+    )
 
-    # Reads the CSV File in Chunks
-    for chunk in pd.read_csv(file_path, chunksize=chunksize, dtype={'user_id': str, 'track_id': str, 'playcount': int}, low_memory=False):
-        for _, row in chunk.iterrows():
-            user_id = row['user_id']
-            song_id = row['track_id']
-            play_count = row['playcount']
+    # Inspect the first few rows to ensure correct reading
+    print("Sampled Data:")
+    print(data.head())
 
-            # Map user_id to user_index
-            if user_id not in user_id_to_index:
-                user_id_to_index[user_id] = user_index
-                user_index += 1
-            u_idx = user_id_to_index[user_id]
+    # Binarize the play counts
+    data['playcount'] = 1
 
-            # Map song_id to song_index
-            if song_id not in song_id_to_index:
-                song_id_to_index[song_id] = song_index
-                song_index += 1
-            s_idx = song_id_to_index[song_id]
+    # Map IDs to zero-based indices
+    unique_user_ids = data['user_id'].unique()
+    unique_track_ids = data['track_id'].unique()
 
-            # Collect data
-            user_indices.append(u_idx)
-            song_indices.append(s_idx)
-            play_counts.append(play_count)
+    user_id_to_index = {user_id: idx for idx, user_id in enumerate(unique_user_ids)}
+    track_id_to_index = {track_id: idx for idx, track_id in enumerate(unique_track_ids)}
 
-    return user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index
+    # Apply the mappings to create index columns
+    data['user_idx'] = data['user_id'].map(user_id_to_index)
+    data['track_idx'] = data['track_id'].map(track_id_to_index)
 
-# Calculates and displays statistics about the sparsity of the user-song interaction matrix
-def compute_sparsity_statistics(interactions_df, num_users, num_songs):
-    total_entries = num_users * num_songs
-    num_nonzero_original = len(interactions_df)
-    num_zero_original = total_entries - num_nonzero_original
-    density = num_nonzero_original / total_entries
-    sparsity = 1 - density
-    
-    print(f"Total entries in matrix: {total_entries}")
-    print(f"Non-zero entries: {num_nonzero_original}")
-    print(f"Zero entries: {num_zero_original}")
-    print(f"Density: {density:.4%}")
-    print(f"Sparsity: {sparsity:.4%}")
+    num_users = len(unique_user_ids)
+    num_tracks = len(unique_track_ids)
+
+    print(f"Dataset Size: {len(data)}")
+    print(f"Number of users: {num_users}")
+    print(f"Number of tracks: {num_tracks}")
+
+    return data, num_users, num_tracks
+
+def split_data(data):
+    train_data, test_data = train_test_split(
+        data,
+        test_size=0.2,
+        random_state=42
+    )
+
+    return train_data, test_data
+
+def create_user_song_matrix(train_data, num_users, num_tracks):
+    #Create a sparse matrix with play counts
+    V = sps.csr_matrix(
+        (train_data['playcount'], (train_data['user_idx'], train_data['track_idx'])),
+        shape=(num_users, num_tracks)
+    )
+
+    #Calculate and print matrix statistics
+    total_possible = num_users * num_tracks
+    non_zero_entries = V.nnz
+    sparsity = 1 - (non_zero_entries / total_possible)
+
+    print('Target:\n%s' % V.todense())
+    print(f"Matrix Shape: {V.shape}")
+    print(f"Non-zero Entries: {non_zero_entries}")
+    print(f"Zero Entries: {total_possible - non_zero_entries}")
+    print(f"Sparsity: {sparsity:.6f} ({sparsity*100:.2f}%)")
+    return V
 
 # Provide insights into the distribution and variability of play counts,
-def compute_training_statistics(train_interactions):
-    train_values = train_interactions['play_count'].values
+def compute_split_statistics(train_data, test_data):
+    print(f"Training data: {len(train_data)}")
+    print(f"Test data: {len(test_data)}")
+    train_values = train_data['playcount'].values
     mean_train = np.mean(train_values)
     median_train = np.median(train_values)
     std_train = np.std(train_values, ddof=1)
     print(f"Training values - Mean: {mean_train}, Median: {median_train}, Std Dev: {std_train}")
 
-# Main code
-# Load interactions
-user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index = load_interactions('User Listening History 100K.csv')
-
-# Create a DataFrame of interactions
-interactions_df = pd.DataFrame({
-    'user_idx': user_indices,
-    'song_idx': song_indices,
-    'play_count': play_counts
-})
-
-# Binarize the play counts
-interactions_df['play_count'] = 1
-
-# Compute sparsity statistics
-num_users = len(user_id_to_index)
-num_songs = len(song_id_to_index)
-compute_sparsity_statistics(interactions_df, num_users, num_songs)
-
-# Split interactions into training and test sets
-train_interactions, test_interactions = train_test_split(
-    interactions_df,
-    test_size=0.2,
-    random_state=42
-)
-
-# Compute training statistics
-compute_training_statistics(train_interactions)
-
-# Create sparse matrices for training and testing
-V_train_sparse = sps.csr_matrix(
-    (train_interactions['play_count'], (train_interactions['user_idx'], train_interactions['song_idx'])),
-    shape=(num_users, num_songs)
-)
-
-# Initialize variables
-best_rmse = float('inf')
-best_rank = None
-best_W, best_H = None, None
-
-# Iterate over a range of ranks
-for rank in range(5, 20):
-    nmf_model = NMF(
-        n_components=rank,
+def factorize(V):
+    nmf = NMF(
+        n_components=20,
         init='nndsvda',
-        solver='cd',  # Use 'mu' solver for sparse input
+        solver='mu',  # Use 'mu' solver for sparse input
         beta_loss='frobenius',
         max_iter=500,
-        random_state=0,
+        random_state=42,
         # verbose=True
     )
 
     # Fit the NMF model to the sparse training data
-    W = nmf_model.fit_transform(V_train_sparse)
-    H = nmf_model.components_
-    
-    # Predict test values
-    test_user_indices = test_interactions['user_idx'].values
-    test_song_indices = test_interactions['song_idx'].values
-    test_play_counts = test_interactions['play_count'].values
-    
-    predicted_values = np.sum(W[test_user_indices, :] * H[:, test_song_indices].T, axis=1)
-    
-    # Clip predicted values to the range [0, 1] since we're dealing with binary data
-    predicted_values = np.clip(predicted_values, 0, 1)
+    W = nmf.fit_transform(V)
+    H = nmf.components_
 
-    # Inspect Predicted Values for Test Set
-    print(f"First 10 predicted values: {predicted_values[:10]}")
-    print(f"First 10 actual test values: {test_play_counts[:10]}")
-    
-    # Check Variability in W and H Matrices
-    W_norm = np.linalg.norm(W)
-    H_norm = np.linalg.norm(H)
-    print(f"Rank: {rank}, W norm: {W_norm}, H norm: {H_norm}")
-    
-    # Compute RMSE on test set
-    rmse = root_mean_squared_error(test_play_counts, predicted_values)
-    print(f"Rank: {rank}, RMSE on test set: {rmse}")
-    
-    # Update best model
-    if rmse < best_rmse:
-        best_rmse = rmse
-        best_rank = rank
-        best_W, best_H = W, H
+    print('Basis matrix:\n%s' % W)
+    print('Mixture matrix:\n%s' % H)
+    # Target estimate
+    V_estimated = np.dot(W, H)
+    print('Target estimate (W * H):\n', V_estimated)
 
-print(f"Best Rank: {best_rank}, Best RMSE: {best_rmse}")
+    return W, H
+
+def evaluate(W, H, test_data):
+
+    predictions = []
+    actuals = []
+    
+    for row in test_data.itertuples():
+        user_idx = row.user_idx
+        track_idx = row.track_idx
+        actual_playcount = row.playcount
+        predicted_playcount = np.dot(W[user_idx, :], H[:, track_idx])
+        predicted_playcount = max(predicted_playcount, 0)  # Ensure non-negative
+        
+        predictions.append(predicted_playcount)
+        actuals.append(actual_playcount)
+    
+    rmse = root_mean_squared_error(actuals, predictions)
+    print(f"RMSE: {rmse:.3f}")
+
+def main():
+    # Load data
+    data, num_users, num_tracks = read_data('Modified_Listening_History.txt')
+
+    # Split data
+    train_data, test_data = split_data(data)
+    compute_split_statistics(train_data, test_data)
+
+    # Create user-song matrix
+    V = create_user_song_matrix(train_data, num_users, num_tracks)
+    
+    # Factorize the matrix
+    W, H = factorize(V)
+    
+    # Evaluate the model
+    evaluate(W, H, test_data)
+
+if __name__ == "__main__":
+    main()
