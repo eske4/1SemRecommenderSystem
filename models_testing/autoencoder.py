@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
@@ -78,51 +79,63 @@ def recommend_similar_tracks(track_id, encoded_items):
 
 # Example usage
 if __name__ == "__main__":
-    # Example data - replace with your actual data
+    # Load and prepare the data
     R = load_track_features("../remappings/data/Modified_Music_info.txt", 30000)
-
-    # Prepare data
     data_normalized, scaler = prepare_data(R)
 
-    # Train autoencoder and get item feature matrix
+    # Split data into train and test sets
+    train_data, test_data = train_test_split(
+        data_normalized, test_size=0.2, random_state=42
+    )
+
+    # Set parameters for the autoencoder
     latent_dim = 16  # Adjust as needed
     input_shape = data_normalized.shape[
         1:
     ]  # Assuming data_normalized is (num_samples, num_features)
     autoencoder = Autoencoder(latent_dim, input_shape)
-
     autoencoder.compile(optimizer="adam", loss="mean_squared_error")
 
-    autoencoder.fit(data_normalized, data_normalized, epochs=10)
+    # Train the autoencoder only on the train set
+    autoencoder.fit(train_data, train_data, epochs=10)
 
-    # Get the encoded items
-    encoded_items = autoencoder.encoder.predict(data_normalized)
+    # Generate encoded representations for the entire dataset (train + test)
+    encoded_train = autoencoder.encoder.predict(train_data)
+    encoded_test = autoencoder.encoder.predict(test_data)
 
+    # Select a track to recommend similar tracks for
     track_id_to_recommend = 0
 
+    # Get similar tracks and their similarity scores in the test set
     similar_tracks, similar_tracks_scores = recommend_similar_tracks(
-        track_id_to_recommend, encoded_items
+        track_id_to_recommend, encoded_test
     )
 
+    # Example recommendation
     recommend_id_example = similar_tracks[2]
-
     print("Recommended Track Indices:", similar_tracks)
     print("Similarity score:", similar_tracks_scores)
 
-    print("score of recommended item similarity of encoded item: recommend_id_example")
-
+    # Check similarity of encoded items
     print(
+        "Score of recommended item similarity (encoded):",
+        "Using recommended item: ",
+        recommend_id_example,
+        "Score is: ",
         cosine_similarity(
-            [encoded_items[track_id_to_recommend]],
-            [encoded_items[recommend_id_example]],
-        )[0][0]
+            [encoded_test[track_id_to_recommend]],
+            [encoded_test[recommend_id_example]],
+        )[0][0],
     )
 
-    print("score of recommended item similarity of item: recommend_id_example")
-
+    # Check similarity of original items
     print(
+        "Score of recommended item similarity (original):",
+        "Using recommended item: ",
+        recommend_id_example,
+        "Score is: ",
         cosine_similarity(
-            [data_normalized[track_id_to_recommend]],
-            [data_normalized[recommend_id_example]],
-        )[0][0]
+            [test_data[track_id_to_recommend]],
+            [test_data[recommend_id_example]],
+        )[0][0],
     )
