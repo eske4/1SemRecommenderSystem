@@ -25,7 +25,9 @@ class Autoencoder(Model):
         )
         self.decoder = tf.keras.Sequential(
             [
-                layers.Dense(tf.math.reduce_prod(shape).numpy(), activation="sigmoid"),
+                layers.Dense(
+                    np.prod(shape), activation="sigmoid"
+                ),  # Use np.prod instead of tf.math.reduce_prod
                 layers.Reshape(shape),
             ]
         )
@@ -56,72 +58,34 @@ def prepare_data(data):
     return data_normalized, scaler
 
 
-# Function to calculate diversity
-from sklearn.metrics import pairwise_distances
-
-
-def calculate_diversity_scores(recommended_items):
-    # Calculate pairwise distances using cosine distance
-    distance_matrix = pairwise_distances(recommended_items, metric="cosine")
-
-    # Get the upper triangle of the distance matrix (excluding the diagonal)
-    triu_indices = np.triu_indices(len(distance_matrix), k=1)
-
-    # Average distance (the lower the average, the less diverse the items are)
-    diversity_score = np.mean(distance_matrix[triu_indices])
-
-    return diversity_score
-
-
 def recommend_similar_tracks(track_id, encoded_items):
     # Calculate cosine similarity between the target track and all other tracks
     sim_scores = cosine_similarity([encoded_items[track_id]], encoded_items)[0]
 
-    # Sort by similarity and get top_n most similar tracks
+    # Sort by similarity and get most similar tracks
     sim_track_indices = np.argsort(sim_scores)[::-1]
     sim_scores = sim_scores[sim_track_indices]
 
-    return sim_track_indices, sim_scores
+    # Create a mask to exclude the input track from the recommendations
+    mask = sim_track_indices != track_id
 
-    # Define a function to make recommendations considering diversity
+    # Filter out the input track from the indices and similarity scores
+    filtered_indices = sim_track_indices[mask]
+    filtered_scores = sim_scores[mask]
 
-
-def recommend_with_diversity(track_id, encoded_items, diversity_weight=0.5):
-    # Get similar tracks based on the encoded items
-    similar_indices, sim_scores = recommend_similar_tracks(track_id, encoded_items)
-
-    # Calculate diversity scores
-    diversity_scores = calculate_diversity_scores(encoded_items[similar_indices])
-
-    # Combine similarity and diversity scores
-    combined_scores = (1 - diversity_weight) * sim_scores + diversity_weight * (
-        1 - diversity_scores
-    )
-
-    # Get the final recommendations based on the combined scores
-    final_recommend_indices = np.argsort(combined_scores)[::-1]
-
-    # Return the recommended track indices and their combined scores
-    return (
-        similar_indices[final_recommend_indices],
-        combined_scores[final_recommend_indices],
-    )
+    return filtered_indices, filtered_scores
 
 
 # Example usage
 if __name__ == "__main__":
     # Example data - replace with your actual data
-    R = load_track_features("../remappings/data/Modified_Music_info.txt", 10000)
+    R = load_track_features("../remappings/data/Modified_Music_info.txt", 30000)
 
     # Prepare data
     data_normalized, scaler = prepare_data(R)
 
-    print(np.isnan(data_normalized).any())
-    print(data_normalized.shape)
-    print(data_normalized)
-
     # Train autoencoder and get item feature matrix
-    latent_dim = 32  # Adjust as needed
+    latent_dim = 16  # Adjust as needed
     input_shape = data_normalized.shape[
         1:
     ]  # Assuming data_normalized is (num_samples, num_features)
@@ -134,14 +98,11 @@ if __name__ == "__main__":
     # Get the encoded items
     encoded_items = autoencoder.encoder.predict(data_normalized)
 
-    # User to recommend
-    diversity_weight = 0.7  # 70% diversity
-    track_id_to_recommend = 388
+    track_id_to_recommend = 0
 
-    recommended_indices, combined_scores = recommend_with_diversity(
-        track_id_to_recommend, encoded_items, diversity_weight=diversity_weight
+    similar_tracks, similar_tracks_scores = recommend_similar_tracks(
+        track_id_to_recommend, encoded_items
     )
 
-    # Output recommended track indices and their scores
-    print("Recommended Track Indices:", recommended_indices)
-    print("Combined Scores:", combined_scores)
+    print("Recommended Track Indices:", similar_tracks)
+    print("Similarity score:", similar_tracks_scores)
