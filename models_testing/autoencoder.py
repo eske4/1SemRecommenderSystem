@@ -104,5 +104,25 @@ if __name__ == "__main__":
         track_id_to_recommend, encoded_items
     )
 
+    recommend_id_example = similar_tracks[2]
+
     print("Recommended Track Indices:", similar_tracks)
     print("Similarity score:", similar_tracks_scores)
+
+    print("score of recommended item similarity of encoded item: recommend_id_example")
+
+    print(
+        cosine_similarity(
+            [encoded_items[track_id_to_recommend]],
+            [encoded_items[recommend_id_example]],
+        )[0][0]
+    )
+
+    print("score of recommended item similarity of item: recommend_id_example")
+
+    print(
+        cosine_similarity(
+            [data_normalized[track_id_to_recommend]],
+            [data_normalized[recommend_id_example]],
+        )[0][0]
+    )
