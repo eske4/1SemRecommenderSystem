@@ -1,11 +1,55 @@
+import ast
+import os
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras import layers, losses
+from tensorflow.keras.models import Model
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU
 
 
-def load_csv(path, max_rows=None):
-    return pd.read_csv(path, delimiter="\t", nrows=max_rows).to_numpy()
+class Autoencoder(Model):
+    def __init__(self, latent_dim, shape):
+        super(Autoencoder, self).__init__()
+        self.latent_dim = latent_dim
+        self.shape = shape
+        self.encoder = tf.keras.Sequential(
+            [
+                layers.Flatten(),
+                layers.Dense(latent_dim, activation="relu"),
+            ]
+        )
+        self.decoder = tf.keras.Sequential(
+            [
+                layers.Dense(
+                    np.prod(shape), activation="sigmoid"
+                ),  # Use np.prod instead of tf.math.reduce_prod
+                layers.Reshape(shape),
+            ]
+        )
+
+    def call(self, x):
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
+
+
+def load_track_features(path, max_rows=None):
+    df = pd.read_csv(path, delimiter="\t", nrows=max_rows)
+    # Apply ast.literal_eval on each cell that contains list-like strings
+    for col in df.columns:
+        df[col] = df[col].apply(
+            lambda x: (
+                ast.literal_eval(x) if isinstance(x, str) and x.startswith("[") else x
+            )
+        )
+    df.drop(columns=["tags"], errors="ignore", inplace=True)
+    return df.to_numpy()
 
 
 # Data preparation function
@@ -15,80 +59,83 @@ def prepare_data(data):
     return data_normalized, scaler
 
 
-# Autoencoder model definition
-def build_autoencoder(input_dim, encoding_dim):
-    input_layer = tf.keras.layers.Input(shape=(input_dim,))
-    encoded = tf.keras.layers.Dense(encoding_dim, activation="relu")(input_layer)
-    decoded = tf.keras.layers.Dense(input_dim, activation="sigmoid")(encoded)
+def recommend_similar_tracks(track_id, encoded_items):
+    # Calculate cosine similarity between the target track and all other tracks
+    sim_scores = cosine_similarity([encoded_items[track_id]], encoded_items)[0]
 
-    autoencoder = tf.keras.models.Model(input_layer, decoded)
-    encoder = tf.keras.models.Model(input_layer, encoded)
-    return autoencoder, encoder
+    # Sort by similarity and get most similar tracks
+    sim_track_indices = np.argsort(sim_scores)[::-1]
+    sim_scores = sim_scores[sim_track_indices]
 
+    # Create a mask to exclude the input track from the recommendations
+    mask = sim_track_indices != track_id
 
-# Function to train the autoencoder
-def train_autoencoder(data, encoding_dim, epochs=100):
-    input_dim = data.shape[1]
-    autoencoder, encoder = build_autoencoder(input_dim, encoding_dim)
-    autoencoder.compile(optimizer="adam", loss="mean_squared_error")
-    autoencoder.fit(data, data, epochs=epochs, batch_size=32, shuffle=True)
-    return encoder
+    # Filter out the input track from the indices and similarity scores
+    filtered_indices = sim_track_indices[mask]
+    filtered_scores = sim_scores[mask]
 
-
-# Function to calculate diversity
-def calculate_diversity_scores(recommended_scores):
-    # Implement diversity calculation logic here
-    diversity_scores = np.random.rand(
-        len(recommended_scores)
-    )  # Example: random diversity scores
-    return diversity_scores
-
-
-# Function to recommend items with diversity
-def recommend_items_with_diversity(user_id, U, V, R, diversity_weight, top_n=5):
-    # Calculate recommendations based on user and item matrices
-    recommended_scores = np.dot(U[user_id], V.T)
-
-    # Calculate diversity scores
-    diversity_scores = calculate_diversity_scores(recommended_scores)
-
-    # Combine scores based on diversity weight
-    final_scores = (
-        1 - diversity_weight
-    ) * recommended_scores + diversity_weight * diversity_scores
-
-    # Get top recommended items
-    recommended_indices = np.argsort(final_scores)[-top_n:][::-1]  # Get top_n items
-    recommended_items = recommended_indices.tolist()
-    recommended_diversity = diversity_scores[
-        recommended_indices
-    ].tolist()  # Get diversity scores for recommended items
-
-    return recommended_items, recommended_diversity
+    return filtered_indices, filtered_scores
 
 
 # Example usage
 if __name__ == "__main__":
-    # Example data - replace with your actual data
-    R = load_csv("../remappings/data/Modified_Music_info.txt", 10000)
-
-    # Prepare data
+    # Load and prepare the data
+    R = load_track_features("../remappings/data/Modified_Music_info.txt", 30000)
     data_normalized, scaler = prepare_data(R)
 
-    # Train autoencoder and get user feature matrix
-    encoding_dim = 32  # You can adjust this value as needed
-    encoder = train_autoencoder(data_normalized, encoding_dim)
-    U = encoder.predict(data_normalized)  # User features
-    V = encoder.predict(data_normalized.T)  # Item features
-
-    # User to recommend
-    user_id_to_recommend = 0
-    diversity_weight = 0.7  # 70% diversity
-
-    # Recommend items
-    recommended_items, recommended_diversity = recommend_items_with_diversity(
-        user_id_to_recommend, U, V, R, diversity_weight
+    # Split data into train and test sets
+    train_data, test_data = train_test_split(
+        data_normalized, test_size=0.2, random_state=42
     )
 
-    print("Recommended items:", recommended_items)
-    print("Diversity scores for recommended items:", recommended_diversity)
+    # Set parameters for the autoencoder
+    latent_dim = 16  # Adjust as needed
+    input_shape = data_normalized.shape[
+        1:
+    ]  # Assuming data_normalized is (num_samples, num_features)
+    autoencoder = Autoencoder(latent_dim, input_shape)
+    autoencoder.compile(optimizer="adam", loss="mean_squared_error")
+
+    # Train the autoencoder only on the train set
+    autoencoder.fit(train_data, train_data, epochs=10)
+
+    # Generate encoded representations for the entire dataset (train + test)
+    encoded_train = autoencoder.encoder.predict(train_data)
+    encoded_test = autoencoder.encoder.predict(test_data)
+
+    # Select a track to recommend similar tracks for
+    track_id_to_recommend = 0
+
+    # Get similar tracks and their similarity scores in the test set
+    similar_tracks, similar_tracks_scores = recommend_similar_tracks(
+        track_id_to_recommend, encoded_test
+    )
+
+    # Example recommendation
+    recommend_id_example = similar_tracks[2]
+    print("Recommended Track Indices:", similar_tracks)
+    print("Similarity score:", similar_tracks_scores)
+
+    # Check similarity of encoded items
+    print(
+        "Score of recommended item similarity (encoded):",
+        "Using recommended item: ",
+        recommend_id_example,
+        "Score is: ",
+        cosine_similarity(
+            [encoded_test[track_id_to_recommend]],
+            [encoded_test[recommend_id_example]],
+        )[0][0],
+    )
+
+    # Check similarity of original items
+    print(
+        "Score of recommended item similarity (original):",
+        "Using recommended item: ",
+        recommend_id_example,
+        "Score is: ",
+        cosine_similarity(
+            [test_data[track_id_to_recommend]],
+            [test_data[recommend_id_example]],
+        )[0][0],
+    )
