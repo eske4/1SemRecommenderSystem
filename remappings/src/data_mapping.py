@@ -37,10 +37,9 @@ def remap_listening_history(df, track_ids, user_ids):
 
 def remap_music_info(df2, track_ids, genres, artists, names, tags_to_index):
     """Preprocess the second DataFrame for music info."""
-    df2["track_id"] = df2["track_id"].map(track_ids)
-    df2["name"] = df2["name"].map(names)
     df2["genre"] = df2["genre"].map(genres)
-    df2["artist"] = df2["artist"].map(artists)
+    df2["track_id"] = df2["track_id"].map(track_ids)
+
     df2["tags"] = df2["tags"].apply(lambda x: replace_tags_with_index(x, tags_to_index))
 
     # Drop specified columns in place
@@ -78,17 +77,6 @@ def main():
     # Step 3: Map data in the DataFrames
     remap_listening_history(df, track_ids, user_ids)
     remap_music_info(df2, track_ids, genres, artists, names, tags_to_index)
-
-    # Optional: Drop columns based on a condition
-    with_genre = False
-    if with_genre:
-        df2 = df2.drop(
-            columns=["tags"], errors="ignore"
-        )  # Drop tags if with_genre is True
-    else:
-        df2 = df2.drop(
-            columns=["genre"], errors="ignore"
-        )  # Drop genre if with_genre is False
 
     # Step 4: Save the modified DataFrames to text files
     save_dataframes_to_txt(df, df2)

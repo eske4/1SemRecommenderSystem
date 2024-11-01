@@ -6,13 +6,12 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras import layers, losses
+from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer
+from tensorflow.keras import layers
 from tensorflow.keras.models import Model
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU
 
-
+# Define Autoencoder model class
 class Autoencoder(Model):
     def __init__(self, latent_dim, shape):
         super(Autoencoder, self).__init__()
@@ -26,9 +25,7 @@ class Autoencoder(Model):
         )
         self.decoder = tf.keras.Sequential(
             [
-                layers.Dense(
-                    np.prod(shape), activation="sigmoid"
-                ),  # Use np.prod instead of tf.math.reduce_prod
+                layers.Dense(np.prod(shape), activation="sigmoid"),
                 layers.Reshape(shape),
             ]
         )
@@ -39,103 +36,139 @@ class Autoencoder(Model):
         return decoded
 
 
+# Load track features from file
 def load_track_features(path, max_rows=None):
-    df = pd.read_csv(path, delimiter="\t", nrows=max_rows)
-    # Apply ast.literal_eval on each cell that contains list-like strings
-    for col in df.columns:
-        df[col] = df[col].apply(
-            lambda x: (
-                ast.literal_eval(x) if isinstance(x, str) and x.startswith("[") else x
-            )
-        )
-    df.drop(columns=["tags"], errors="ignore", inplace=True)
-    return df.to_numpy()
+    return pd.read_csv(path, delimiter="\t", nrows=max_rows)
 
 
-# Data preparation function
+# Prepare data by normalizing it
 def prepare_data(data):
     scaler = MinMaxScaler()
     data_normalized = scaler.fit_transform(data)
     return data_normalized, scaler
 
 
+# Preprocess features using onehot encoding method
+def preprocess_features(data):
+    # Separate and prepare the metadata
+    metadata = data[["name", "artist", "track_id"]]
+
+    # Drop metadata from feature data and handle categorical columns
+    features = data.drop(columns=["name", "artist", "track_id"], errors="ignore")
+    features["genre"] = features["genre"].astype("category")
+
+    def parse_tags(x):
+        if isinstance(x, str):
+            # Check if the string looks like a list
+            if x.startswith("[") and x.endswith("]"):
+                # Convert from string representation of a list to a list
+                return eval(
+                    x
+                )  # This could still be risky, consider using ast.literal_eval
+            else:
+                # Split by commas and strip whitespace
+                return [tag.strip() for tag in x.split(",") if tag.strip()]
+        return []
+
+    features["tags"] = features["tags"].apply(parse_tags)
+
+    mlb = MultiLabelBinarizer()
+    tags_encoded = mlb.fit_transform(features["tags"])
+
+    genre_encoded = pd.get_dummies(features["genre"], prefix="genre")
+    tags_df = pd.DataFrame(tags_encoded, columns=mlb.classes_).add_prefix("tag_")
+    # Rename columns based on mapping
+
+    print(tags_df.head())
+    print(genre_encoded.head())
+
+    # Combine processed features with one-hot encoded data
+    processed_data = pd.concat([features, genre_encoded, tags_df], axis=1)
+    print(len(processed_data.head()))
+    return processed_data.drop(columns=["genre", "tags"]), metadata
+
+
+# Train the autoencoder on training data
+def train_autoencoder(train_data, latent_dim):
+    input_shape = train_data.shape[1:]
+    autoencoder = Autoencoder(latent_dim, input_shape)
+    autoencoder.compile(optimizer="adam", loss="mean_squared_error")
+    autoencoder.fit(train_data, train_data, epochs=10)
+    return autoencoder
+
+
+# Generate encoded representations of data
+def encode_data(autoencoder, data):
+    return autoencoder.encoder.predict(data)
+
+
+# Recommend similar tracks based on cosine similarity
 def recommend_similar_tracks(track_id, encoded_items):
-    # Calculate cosine similarity between the target track and all other tracks
     sim_scores = cosine_similarity([encoded_items[track_id]], encoded_items)[0]
+    sorted_indices = np.argsort(sim_scores)[::-1]
 
-    # Sort by similarity and get most similar tracks
-    sim_track_indices = np.argsort(sim_scores)[::-1]
-    sim_scores = sim_scores[sim_track_indices]
-
-    # Create a mask to exclude the input track from the recommendations
-    mask = sim_track_indices != track_id
-
-    # Filter out the input track from the indices and similarity scores
-    filtered_indices = sim_track_indices[mask]
+    # Exclude the selected track itself from recommendations
+    mask = sorted_indices != track_id
+    filtered_indices = sorted_indices[mask]
     filtered_scores = sim_scores[mask]
 
     return filtered_indices, filtered_scores
 
 
-# Example usage
-if __name__ == "__main__":
-    # Load and prepare the data
-    R = load_track_features("../remappings/data/Modified_Music_info.txt", 30000)
-    data_normalized, scaler = prepare_data(R)
+# Display recommendations
+def display_recommendations(track_id, encoded_data, test_data):
+    similar_indices, similar_scores = recommend_similar_tracks(track_id, encoded_data)
+    example_track = similar_indices[2]
 
-    # Split data into train and test sets
+    print("Recommended Track Indices:", similar_indices)
+    print("Similarity Scores:", similar_scores)
+    print(
+        "Encoded similarity score:",
+        cosine_similarity([encoded_data[track_id]], [encoded_data[example_track]])[0][
+            0
+        ],
+    )
+    print(
+        "Original similarity score:",
+        cosine_similarity([test_data[track_id]], [test_data[example_track]])[0][0],
+    )
+
+
+# Main function to execute the pipeline
+def main():
+    data_path = "../remappings/data/Modified_Music_info.txt"
+    raw_data = load_track_features(data_path)
+
+    # Preprocess data
+    final_data, meta_data = preprocess_features(raw_data)
+
+    # Normalize and split data
+    data_normalized, scaler = prepare_data(final_data.to_numpy())
     train_data, test_data = train_test_split(
         data_normalized, test_size=0.2, random_state=42
     )
 
-    # Set parameters for the autoencoder
-    latent_dim = 16  # Adjust as needed
-    input_shape = data_normalized.shape[
-        1:
-    ]  # Assuming data_normalized is (num_samples, num_features)
-    autoencoder = Autoencoder(latent_dim, input_shape)
-    autoencoder.compile(optimizer="adam", loss="mean_squared_error")
+    # Train autoencoder
+    latent_dim = 2
+    autoencoder = train_autoencoder(train_data, latent_dim)
 
-    # Train the autoencoder only on the train set
-    autoencoder.fit(train_data, train_data, epochs=10)
+    encoded_test = encode_data(autoencoder, data_normalized)
+    decoded_test = autoencoder.decoder.predict(encoded_test)
 
-    # Generate encoded representations for the entire dataset (train + test)
-    encoded_train = autoencoder.encoder.predict(train_data)
-    encoded_test = autoencoder.encoder.predict(test_data)
+    # Convert decoded output to DataFrame
+    decoded_test_df = pd.DataFrame(decoded_test, columns=final_data.columns)
 
-    # Select a track to recommend similar tracks for
+    # Combine decoded data with metadata
+    combined_data = pd.concat(
+        [meta_data.reset_index(drop=True), decoded_test_df], axis=1
+    )
+
+    print(combined_data)
+
+    # Display recommendations
     track_id_to_recommend = 0
+    display_recommendations(track_id_to_recommend, encoded_test, data_normalized)
 
-    # Get similar tracks and their similarity scores in the test set
-    similar_tracks, similar_tracks_scores = recommend_similar_tracks(
-        track_id_to_recommend, encoded_test
-    )
 
-    # Example recommendation
-    recommend_id_example = similar_tracks[2]
-    print("Recommended Track Indices:", similar_tracks)
-    print("Similarity score:", similar_tracks_scores)
-
-    # Check similarity of encoded items
-    print(
-        "Score of recommended item similarity (encoded):",
-        "Using recommended item: ",
-        recommend_id_example,
-        "Score is: ",
-        cosine_similarity(
-            [encoded_test[track_id_to_recommend]],
-            [encoded_test[recommend_id_example]],
-        )[0][0],
-    )
-
-    # Check similarity of original items
-    print(
-        "Score of recommended item similarity (original):",
-        "Using recommended item: ",
-        recommend_id_example,
-        "Score is: ",
-        cosine_similarity(
-            [test_data[track_id_to_recommend]],
-            [test_data[recommend_id_example]],
-        )[0][0],
-    )
+if __name__ == "__main__":
+    main()
