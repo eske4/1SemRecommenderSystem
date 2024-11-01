@@ -1,142 +1,164 @@
+import os
+import sys
+import cornac
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import scipy.sparse as sps
-from sklearn.decomposition import NMF
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import root_mean_squared_error
 
-def read_data(file_path):
+from recommenders.datasets import movielens
+from recommenders.datasets.python_splitters import python_random_split
+from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_at_k, recall_at_k
+from recommenders.models.cornac.cornac_utils import predict_ranking
+from recommenders.utils.timer import Timer
+from recommenders.utils.constants import SEED
+from recommenders.utils.notebook_utils import store_metadata
+
+def read_data(file_path, nrows=None):
+    """
+    Reads and preprocesses the user-song interaction data.
+
+    Args:
+        file_path (str): Path to the dataset file.
+        nrows (int, optional): Number of rows to read. Defaults to None (reads all).
+
+    Returns:
+        pd.DataFrame: Preprocessed data with string IDs.
+        int: Number of unique users.
+        int: Number of unique tracks.
+    """
     data = pd.read_csv(
         file_path,
         sep='\t',
         dtype={'track_id': int, 'user_id': int, 'playcount': int},
-        nrows=1000  # Adjust or remove nrows to read more data
+        nrows=nrows  # Adjust or remove nrows to read more data
     )
+
+    # Rename columns to match expected format
+    data.rename(columns={"user_id": "userId", "track_id": "itemId", "playcount": "rating"}, inplace=True)
 
     # Inspect the first few rows to ensure correct reading
     print("Sampled Data:")
     print(data.head())
 
     # Binarize the play counts
-    data['playcount'] = 1
+    data['rating'] = 1
 
-    # Map IDs to zero-based indices
-    unique_user_ids = data['user_id'].unique()
-    unique_track_ids = data['track_id'].unique()
+    num_users = data['userId'].nunique()
+    num_tracks = data['itemId'].nunique()
 
-    user_id_to_index = {user_id: idx for idx, user_id in enumerate(unique_user_ids)}
-    track_id_to_index = {track_id: idx for idx, track_id in enumerate(unique_track_ids)}
-
-    # Apply the mappings to create index columns
-    data['user_idx'] = data['user_id'].map(user_id_to_index)
-    data['track_idx'] = data['track_id'].map(track_id_to_index)
-
-    num_users = len(unique_user_ids)
-    num_tracks = len(unique_track_ids)
-
-    print(f"Dataset Size: {len(data)}")
+    print(f"Dataset Size: {len(data)} interactions")
     print(f"Number of users: {num_users}")
     print(f"Number of tracks: {num_tracks}")
 
     return data, num_users, num_tracks
 
-def split_data(data):
-    train_data, test_data = train_test_split(
-        data,
-        test_size=0.2,
-        random_state=42
-    )
+def split_data(data, train_ratio, seed):
+    """
+    Splits the data into training and testing sets using Recommenders' framwork
 
-    return train_data, test_data
+    Args:
+        data (pd.DataFrame): The complete dataset.
 
-def create_user_song_matrix(train_data, num_users, num_tracks):
-    #Create a sparse matrix with play counts
-    V = sps.csr_matrix(
-        (train_data['playcount'], (train_data['user_idx'], train_data['track_idx'])),
-        shape=(num_users, num_tracks)
-    )
+    Returns:
+        train_data (pd.DataFrame): Training set.
+        test_data (pd.DataFrame): Testing set.
+    """
+    train, test = python_random_split(data, ratio=train_ratio, seed=seed)
+    print(f"Training data: {len(train)} interactions")
+    print(f"Test data: {len(test)} interactions")
+    return train, test
 
-    #Calculate and print matrix statistics
-    total_possible = num_users * num_tracks
-    non_zero_entries = V.nnz
-    sparsity = 1 - (non_zero_entries / total_possible)
-
-    print('Target:\n%s' % V.todense())
-    print(f"Matrix Shape: {V.shape}")
-    print(f"Non-zero Entries: {non_zero_entries}")
-    print(f"Zero Entries: {total_possible - non_zero_entries}")
-    print(f"Sparsity: {sparsity:.6f} ({sparsity*100:.2f}%)")
-    return V
-
-# Provide insights into the distribution and variability of play counts,
-def compute_split_statistics(train_data, test_data):
-    print(f"Training data: {len(train_data)}")
-    print(f"Test data: {len(test_data)}")
-    train_values = train_data['playcount'].values
-    mean_train = np.mean(train_values)
-    median_train = np.median(train_values)
-    std_train = np.std(train_values, ddof=1)
-    print(f"Training values - Mean: {mean_train}, Median: {median_train}, Std Dev: {std_train}")
-
-def factorize(V):
-    nmf = NMF(
-        n_components=20,
-        init='nndsvda',
-        solver='mu',  # Use 'mu' solver for sparse input
-        beta_loss='frobenius',
-        max_iter=500,
-        random_state=42,
-        # verbose=True
-    )
-
-    # Fit the NMF model to the sparse training data
-    W = nmf.fit_transform(V)
-    H = nmf.components_
-
-    print('Basis matrix:\n%s' % W)
-    print('Mixture matrix:\n%s' % H)
-    # Target estimate
-    V_estimated = np.dot(W, H)
-    print('Target estimate (W * H):\n', V_estimated)
-
-    return W, H
-
-def evaluate(W, H, test_data):
-
-    predictions = []
-    actuals = []
+def create_cornac_dataset(train, seed):
+    """
+    Converts pandas DataFrames into Cornac's Dataset format using itertuples.
     
-    for row in test_data.itertuples():
-        user_idx = row.user_idx
-        track_idx = row.track_idx
-        actual_playcount = row.playcount
-        predicted_playcount = np.dot(W[user_idx, :], H[:, track_idx])
-        predicted_playcount = max(predicted_playcount, 0)  # Ensure non-negative
-        
-        predictions.append(predicted_playcount)
-        actuals.append(actual_playcount)
+    Args:
+        train_data (pd.DataFrame): Training set.
     
-    rmse = root_mean_squared_error(actuals, predictions)
-    print(f"RMSE: {rmse:.3f}")
+    Returns:
+        train_set (cornac.data.Dataset): Cornac-formatted training set.
+    """
+
+    # Create Cornac train dataset
+    train_set = cornac.data.Dataset.from_uir(train.itertuples(index=False), seed=seed)
+    print("Training set:")
+    print('Number of users: {}'.format(train_set.num_users))
+    print('Number of items: {}'.format(train_set.num_items))
+
+    return train_set
+
+def train_nmf_model(train_set, num_factors, num_epochs, seed=None):
+    nmf = cornac.models.NMF(
+        k=num_factors,
+        max_iter=num_epochs,
+        learning_rate=0.005,
+        lambda_u=0.06,
+        lambda_v=0.06,
+        lambda_bu=0.02,
+        lambda_bi=0.02,
+        use_bias=False,
+        verbose=True,
+        seed=seed,
+    )
+
+    with Timer() as t:
+        nmf.fit(train_set)
+    print("Took {} seconds for training.".format(t))
+
+    return nmf
+
+def evaluate_model(nmf, train, test, k):
+
+    with Timer() as t:
+        all_predictions = predict_ranking(nmf, train, usercol='userId', itemcol='itemId', predcol='prediction', remove_seen=True)
+
+    print("Test columns:", test.columns)
+    print("Predictions columns:", all_predictions.columns)
+
+
+    print("Took {} seconds for prediction.".format(t))
+
+    all_predictions.head()
+
+    eval_map = map(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    eval_ndcg = ndcg_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    eval_precision = precision_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    eval_recall = recall_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    
+    print("MAP:\t%f" % eval_map,
+        "NDCG:\t%f" % eval_ndcg,
+        "Precision@K:\t%f" % eval_precision,
+        "Recall@K:\t%f" % eval_recall, sep='\n')
 
 def main():
-    # Load data
-    data, num_users, num_tracks = read_data('Modified_Listening_History.txt')
+    # Configuration
+    DATA_FILE_PATH = 'Modified_Listening_History.txt'  # Path to your dataset
+    NROWS = 1000  # Adjust as needed
+    TRAIN_RATIO = 0.8
+    SEED = 42
+    TOP_K = 10
+    NUM_FACTORS = 20
+    NUM_EPOCHS = 500
 
-    # Split data
-    train_data, test_data = split_data(data)
-    compute_split_statistics(train_data, test_data)
 
-    # Create user-song matrix
-    V = create_user_song_matrix(train_data, num_users, num_tracks)
-    
-    # Factorize the matrix
-    W, H = factorize(V)
-    
-    # Evaluate the model
-    evaluate(W, H, test_data)
+    # Step 1: Load and preprocess data
+    data, num_users, num_tracks = read_data(DATA_FILE_PATH, nrows=NROWS)
+
+    # Step 2: Split data into training and testing sets
+    train, test = split_data(data, train_ratio=TRAIN_RATIO, seed=SEED)
+
+    # Step 3: Convert data to Cornac's Dataset format
+    test_set = create_cornac_dataset(train, seed=SEED)
+
+    # Step 4: Train and evaluate the Cornac NMF model
+    nmf_model = train_nmf_model(test_set, num_factors=NUM_FACTORS, num_epochs=NUM_EPOCHS)
+
+    # Step 5: Evaluate Cornac NMF model
+    evaluate_model(nmf_model, train, test, k=TOP_K)
 
 if __name__ == "__main__":
     main()
+
+# Record results for tests - ignore this cell
+# store_metadata("map", eval_map)
+# store_metadata("ndcg", eval_ndcg)
+# store_metadata("precision", eval_precision)
+# store_metadata("recall", eval_recall)
