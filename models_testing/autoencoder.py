@@ -103,25 +103,30 @@ def encode_data(autoencoder, data):
 
 
 # Recommend similar tracks based on cosine similarity
-def recommend_similar_tracks(track_id, encoded_items):
-    sim_scores = cosine_similarity([encoded_items[track_id]], encoded_items)[0]
+def recommend_similar_tracks(track_id, encoded_data, items):
+    sim_scores = cosine_similarity([encoded_data[track_id]], encoded_data)[0]
     sorted_indices = np.argsort(sim_scores)[::-1]
 
     # Exclude the selected track itself from recommendations
     mask = sorted_indices != track_id
     filtered_indices = sorted_indices[mask]
     filtered_scores = sim_scores[mask]
+    sorted_items = items.iloc[filtered_indices]
 
-    return filtered_indices, filtered_scores
+    return filtered_indices, filtered_scores, sorted_items
 
 
 # Display recommendations
-def display_recommendations(track_id, encoded_data, test_data):
-    similar_indices, similar_scores = recommend_similar_tracks(track_id, encoded_data)
+def display_recommendations(track_id, encoded_data, test_data, items_with_metadata):
+    similar_indices, similar_scores, item_with_metadata = recommend_similar_tracks(
+        track_id, encoded_data, items_with_metadata
+    )
     example_track = similar_indices[2]
 
     print("Recommended Track Indices:", similar_indices)
     print("Similarity Scores:", similar_scores)
+    print("Similarity Scores:", item_with_metadata)
+
     print(
         "Encoded similarity score:",
         cosine_similarity([encoded_data[track_id]], [encoded_data[example_track]])[0][
@@ -167,7 +172,9 @@ def main():
 
     # Display recommendations
     track_id_to_recommend = 0
-    display_recommendations(track_id_to_recommend, encoded_test, data_normalized)
+    display_recommendations(
+        track_id_to_recommend, encoded_test, data_normalized, combined_data
+    )
 
 
 if __name__ == "__main__":
