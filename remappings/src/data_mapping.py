@@ -37,10 +37,7 @@ def remap_listening_history(df, track_ids, user_ids):
 
 def remap_music_info(df2, track_ids, genres, artists, names, tags_to_index):
     """Preprocess the second DataFrame for music info."""
-    df2["genre"] = df2["genre"].map(genres)
     df2["track_id"] = df2["track_id"].map(track_ids)
-
-    df2["tags"] = df2["tags"].apply(lambda x: replace_tags_with_index(x, tags_to_index))
 
     # Drop specified columns in place
     df2.drop(
