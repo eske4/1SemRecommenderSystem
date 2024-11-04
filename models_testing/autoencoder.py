@@ -121,22 +121,10 @@ def display_recommendations(track_id, encoded_data, test_data, items_with_metada
     similar_indices, similar_scores, item_with_metadata = recommend_similar_tracks(
         track_id, encoded_data, items_with_metadata
     )
-    example_track = similar_indices[2]
 
     print("Recommended Track Indices:", similar_indices)
     print("Similarity Scores:", similar_scores)
-    print("Similarity Scores:", item_with_metadata)
-
-    print(
-        "Encoded similarity score:",
-        cosine_similarity([encoded_data[track_id]], [encoded_data[example_track]])[0][
-            0
-        ],
-    )
-    print(
-        "Original similarity score:",
-        cosine_similarity([test_data[track_id]], [test_data[example_track]])[0][0],
-    )
+    print("recommended items:", item_with_metadata)
 
 
 # Main function to execute the pipeline
