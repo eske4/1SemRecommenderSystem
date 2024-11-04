@@ -104,14 +104,23 @@ def encode_data(autoencoder, data):
 
 # Recommend similar tracks based on cosine similarity
 def recommend_similar_tracks(track_id, encoded_data, items):
+    # Calculate similarity scores
     sim_scores = cosine_similarity([encoded_data[track_id]], encoded_data)[0]
+
+    # Sort the scores in descending order
     sorted_indices = np.argsort(sim_scores)[::-1]
 
     # Exclude the selected track itself from recommendations
     mask = sorted_indices != track_id
     filtered_indices = sorted_indices[mask]
-    filtered_scores = sim_scores[mask]
+    filtered_scores = sim_scores[filtered_indices]
     sorted_items = items.iloc[filtered_indices]
+
+    # Re-sort by filtered similarity scores in descending order
+    final_sorted_order = np.argsort(filtered_scores)[::-1]
+    filtered_indices = filtered_indices[final_sorted_order]
+    filtered_scores = filtered_scores[final_sorted_order]
+    sorted_items = sorted_items.iloc[final_sorted_order]
 
     return filtered_indices, filtered_scores, sorted_items
 
@@ -142,7 +151,7 @@ def main():
     )
 
     # Train autoencoder
-    latent_dim = 2
+    latent_dim = 30
     autoencoder = train_autoencoder(train_data, latent_dim)
 
     encoded_test = encode_data(autoencoder, data_normalized)
