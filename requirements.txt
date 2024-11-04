@@ -4,3 +4,4 @@ scikit-learn
 tensorflow
 pandas
 pyspark
+recommenders[spark]
