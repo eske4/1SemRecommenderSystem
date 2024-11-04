@@ -10,9 +10,8 @@ from sklearn.preprocessing import StandardScaler
 
 # paths to datafiles
 
-
-file_path_music_data = r"../../remappings/data/Modified_Music_info.txt"
-file_path_user_data = r"../../remappings/data/Modified_Listening_History.txt"
+file_path_music_data = r"remappings/data/Modified_Music_info.txt"
+file_path_user_data = r"remappings/data/Modified_Listening_History.txt"
 
 # read data files (.txt with \t seperation)
 music_data = pd.read_csv(file_path_music_data, delimiter="\t")
@@ -32,7 +31,7 @@ subset_dataset = merged_data.head(100000)
 features = subset_dataset[["danceability", "energy", "valence", "tempo", "loudness"]]
 
 # select what the model should predict
-target = subset_dataset["track_id"]
+target = subset_dataset["name"]
 
 # data splitting
 X_train, X_test, y_train, y_test = train_test_split(
@@ -77,8 +76,8 @@ model.compile(
 # training parameters
 model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
 
-# example user parameters for singular song (e.g. track_id 0)
-user_input = np.array([[0.355, 0.918, 0.24, 148.114, -4.36]])
+# example user parameters for array of songs 
+user_input = np.array([[0.355, 0.918, 0.24, 148.114, -4.36],[0.355, 0.918, 0.24, 148.114, -4.36],[0.355, 0.918, 0.24, 148.114, -4.36],[0.355, 0.918, 0.24, 148.114, -4.36],[0.355, 0.918, 0.24, 148.114, -4.36]])
 user_input_scaled = scaler.transform(user_input)
 
 # number of songs wanted to be recommended to user
@@ -100,11 +99,18 @@ top_n_indices = np.argsort(predictions[0])[-num_recommendations:][::-1]
 recommended_track_ids = [music_data["track_id"].values[i] for i in top_n_indices]
 print("Recommended Track IDs:", recommended_track_ids)
 
-# test on track_id 0 (10 epochs)
+#-------------------------------------------------------------------------------------------------------
 
-# test_1: [0, 48, 44, 30, 29, 25, 14, 45, 67, 27]
-# test_2: [0, 48, 29, 44, 25, 30, 45, 64, 67, 14]
-# test_3: [0, 48, 30, 44, 14, 25, 29, 67, 45, 38]
-# test_4: [0, 48, 29, 45, 44, 64, 67, 30, 25, 38]
-# test_5: [0, 48, 30, 44, 29, 25, 14, 67, 45, 64]
+#                                            get songs
+
+
+
+track_id_file_path = r"remappings\data\names.txt"
+track_id = pd.read_csv(track_id_file_path, delimiter="\t")
+track_id.columns = ['track_name', 'track_id']
+
+recommended_track_names = track_id[track_id['track_id'].isin(recommended_track_ids)]
+
+print("Recommended Track names:", recommended_track_names)
+
 
