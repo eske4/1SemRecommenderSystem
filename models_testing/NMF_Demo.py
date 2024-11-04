@@ -1,15 +1,17 @@
-import os
-import sys
 import cornac
 import pandas as pd
+import numpy as np
+import warnings
 
-from recommenders.datasets import movielens
 from recommenders.datasets.python_splitters import python_random_split
-from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_at_k, recall_at_k
+from recommenders.evaluation.python_evaluation import rmse, mae, map, ndcg_at_k, precision_at_k, recall_at_k
 from recommenders.models.cornac.cornac_utils import predict_ranking
 from recommenders.utils.timer import Timer
 from recommenders.utils.constants import SEED
 from recommenders.utils.notebook_utils import store_metadata
+
+# Suppress all FutureWarning messages
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def read_data(file_path, nrows=None):
     """
@@ -20,9 +22,7 @@ def read_data(file_path, nrows=None):
         nrows (int, optional): Number of rows to read. Defaults to None (reads all).
 
     Returns:
-        pd.DataFrame: Preprocessed data with string IDs.
-        int: Number of unique users.
-        int: Number of unique tracks.
+        pd.DataFrame: Preprocesses user-song interaction data.
     """
     data = pd.read_csv(
         file_path,
@@ -32,14 +32,16 @@ def read_data(file_path, nrows=None):
     )
 
     # Rename columns to match expected format
-    data.rename(columns={"user_id": "userId", "track_id": "itemId", "playcount": "rating"}, inplace=True)
+    data.rename(columns={"track_id": "itemId", "user_id": "userId", "playcount": "rating"}, inplace=True)
 
     # Inspect the first few rows to ensure correct reading
     print("Sampled Data:")
     print(data.head())
 
-    # Binarize the play counts
-    data['rating'] = 1
+    # Binarizes or sets confidence level for the play counts
+    # data['rating'] = 1
+    alpha = 1
+    data['rating'] = 1 + alpha * np.log1p(data['rating'])  # log1p(x) = log(1 + x)
 
     num_users = data['userId'].nunique()
     num_tracks = data['itemId'].nunique()
@@ -48,7 +50,7 @@ def read_data(file_path, nrows=None):
     print(f"Number of users: {num_users}")
     print(f"Number of tracks: {num_tracks}")
 
-    return data, num_users, num_tracks
+    return data
 
 def split_data(data, train_ratio, seed):
     """
@@ -76,12 +78,31 @@ def create_cornac_dataset(train, seed):
     Returns:
         train_set (cornac.data.Dataset): Cornac-formatted training set.
     """
+    # Reorder columns to (userId, itemId, rating) - expected order for Cornac
+    train = train[['userId', 'itemId', 'rating']]
 
     # Create Cornac train dataset
     train_set = cornac.data.Dataset.from_uir(train.itertuples(index=False), seed=seed)
-    print("Training set:")
+
+    # Calculate sparsity and density
+    num_users = train_set.num_users
+    num_items = train_set.num_items
+    num_observed_interactions = len(train)
+
+    total_possible_interactions = num_users * num_items
+    num_zero_interactions = total_possible_interactions - num_observed_interactions
+
+    sparsity = num_zero_interactions / total_possible_interactions
+    density = num_observed_interactions / total_possible_interactions
+
+    print("\nInteraction Matrix Statistics:")
     print('Number of users: {}'.format(train_set.num_users))
     print('Number of items: {}'.format(train_set.num_items))
+    print(f"Total possible interactions: {total_possible_interactions}")
+    print(f"Number of observed interactions: {num_observed_interactions}")
+    print(f"Number of zero interactions: {num_zero_interactions}")
+    print(f"Sparsity: {sparsity:.4f}")
+    print(f"Density: {density:.4f}")
 
     return train_set
 
@@ -116,22 +137,27 @@ def evaluate_model(nmf, train, test, k):
 
     print("Took {} seconds for prediction.".format(t))
 
-    all_predictions.head()
+    print("Predictions:")
+    print(all_predictions.head())
 
+    eval_rmse = rmse(rating_true=test, rating_pred=all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction')
+    eval_mae = mae(rating_true=test, rating_pred=all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction')
     eval_map = map(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
     eval_ndcg = ndcg_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
     eval_precision = precision_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
     eval_recall = recall_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
     
-    print("MAP:\t%f" % eval_map,
-        "NDCG:\t%f" % eval_ndcg,
-        "Precision@K:\t%f" % eval_precision,
-        "Recall@K:\t%f" % eval_recall, sep='\n')
+    print("RMSE:\t%f" % eval_rmse)
+    print("MAE:\t%f" % eval_mae)
+    print("MAP:\t%f" % eval_map)
+    print("NDCG:\t%f" % eval_ndcg)
+    print("Precision@K:\t%f" % eval_precision)
+    print("Recall@K:\t%f" % eval_recall)
 
 def main():
     # Configuration
     DATA_FILE_PATH = 'Modified_Listening_History.txt'  # Path to your dataset
-    NROWS = 1000  # Adjust as needed
+    NROWS = 10000  # Adjust as needed
     TRAIN_RATIO = 0.8
     SEED = 42
     TOP_K = 10
@@ -140,16 +166,16 @@ def main():
 
 
     # Step 1: Load and preprocess data
-    data, num_users, num_tracks = read_data(DATA_FILE_PATH, nrows=NROWS)
+    data = read_data(DATA_FILE_PATH, nrows=NROWS)
 
     # Step 2: Split data into training and testing sets
     train, test = split_data(data, train_ratio=TRAIN_RATIO, seed=SEED)
 
     # Step 3: Convert data to Cornac's Dataset format
-    test_set = create_cornac_dataset(train, seed=SEED)
+    train_set = create_cornac_dataset(train, seed=SEED)
 
     # Step 4: Train and evaluate the Cornac NMF model
-    nmf_model = train_nmf_model(test_set, num_factors=NUM_FACTORS, num_epochs=NUM_EPOCHS)
+    nmf_model = train_nmf_model(train_set, num_factors=NUM_FACTORS, num_epochs=NUM_EPOCHS)
 
     # Step 5: Evaluate Cornac NMF model
     evaluate_model(nmf_model, train, test, k=TOP_K)
