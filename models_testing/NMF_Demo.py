@@ -1,153 +1,190 @@
+import cornac
 import pandas as pd
 import numpy as np
-import scipy.sparse as sps
-from sklearn.decomposition import NMF
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import root_mean_squared_error
+import warnings
 
-def load_interactions(file_path, chunksize=10**6):
-    #These lists will store the numerical indices for users and songs, and the corresponding play counts
-    user_indices = []
-    song_indices = []
-    play_counts = []
-    # These dictionaries will map the original user_id and song_id to unique numerical indices
-    user_id_to_index = {}
-    song_id_to_index = {}
-    # Counters to assign unique numerical indices to users and songs
-    user_index = 0
-    song_index = 0
+from recommenders.datasets.python_splitters import python_random_split
+from recommenders.evaluation.python_evaluation import rmse, mae, map, ndcg_at_k, precision_at_k, recall_at_k
+from recommenders.models.cornac.cornac_utils import predict_ranking
+from recommenders.utils.timer import Timer
+from recommenders.utils.constants import SEED
+from recommenders.utils.notebook_utils import store_metadata
 
-    # Reads the CSV File in Chunks
-    for chunk in pd.read_csv(file_path, chunksize=chunksize, dtype={'user_id': str, 'track_id': str, 'playcount': int}, low_memory=False):
-        for _, row in chunk.iterrows():
-            user_id = row['user_id']
-            song_id = row['track_id']
-            play_count = row['playcount']
+# Suppress all FutureWarning messages
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
-            # Map user_id to user_index
-            if user_id not in user_id_to_index:
-                user_id_to_index[user_id] = user_index
-                user_index += 1
-            u_idx = user_id_to_index[user_id]
+def read_data(file_path, nrows=None):
+    """
+    Reads and preprocesses the user-song interaction data.
 
-            # Map song_id to song_index
-            if song_id not in song_id_to_index:
-                song_id_to_index[song_id] = song_index
-                song_index += 1
-            s_idx = song_id_to_index[song_id]
+    Args:
+        file_path (str): Path to the dataset file.
+        nrows (int, optional): Number of rows to read. Defaults to None (reads all).
 
-            # Collect data
-            user_indices.append(u_idx)
-            song_indices.append(s_idx)
-            play_counts.append(play_count)
-
-    return user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index
-
-# Calculates and displays statistics about the sparsity of the user-song interaction matrix
-def compute_sparsity_statistics(interactions_df, num_users, num_songs):
-    total_entries = num_users * num_songs
-    num_nonzero_original = len(interactions_df)
-    num_zero_original = total_entries - num_nonzero_original
-    density = num_nonzero_original / total_entries
-    sparsity = 1 - density
-    
-    print(f"Total entries in matrix: {total_entries}")
-    print(f"Non-zero entries: {num_nonzero_original}")
-    print(f"Zero entries: {num_zero_original}")
-    print(f"Density: {density:.4%}")
-    print(f"Sparsity: {sparsity:.4%}")
-
-# Provide insights into the distribution and variability of play counts,
-def compute_training_statistics(train_interactions):
-    train_values = train_interactions['play_count'].values
-    mean_train = np.mean(train_values)
-    median_train = np.median(train_values)
-    std_train = np.std(train_values, ddof=1)
-    print(f"Training values - Mean: {mean_train}, Median: {median_train}, Std Dev: {std_train}")
-
-# Main code
-# Load interactions
-user_indices, song_indices, play_counts, user_id_to_index, song_id_to_index = load_interactions('User Listening History 100K.csv')
-
-# Create a DataFrame of interactions
-interactions_df = pd.DataFrame({
-    'user_idx': user_indices,
-    'song_idx': song_indices,
-    'play_count': play_counts
-})
-
-# Binarize the play counts
-interactions_df['play_count'] = 1
-
-# Compute sparsity statistics
-num_users = len(user_id_to_index)
-num_songs = len(song_id_to_index)
-compute_sparsity_statistics(interactions_df, num_users, num_songs)
-
-# Split interactions into training and test sets
-train_interactions, test_interactions = train_test_split(
-    interactions_df,
-    test_size=0.2,
-    random_state=42
-)
-
-# Compute training statistics
-compute_training_statistics(train_interactions)
-
-# Create sparse matrices for training and testing
-V_train_sparse = sps.csr_matrix(
-    (train_interactions['play_count'], (train_interactions['user_idx'], train_interactions['song_idx'])),
-    shape=(num_users, num_songs)
-)
-
-# Initialize variables
-best_rmse = float('inf')
-best_rank = None
-best_W, best_H = None, None
-
-# Iterate over a range of ranks
-for rank in range(5, 20):
-    nmf_model = NMF(
-        n_components=rank,
-        init='nndsvda',
-        solver='cd',  # Use 'mu' solver for sparse input
-        beta_loss='frobenius',
-        max_iter=500,
-        random_state=0,
-        # verbose=True
+    Returns:
+        pd.DataFrame: Preprocesses user-song interaction data.
+    """
+    data = pd.read_csv(
+        file_path,
+        sep='\t',
+        dtype={'track_id': int, 'user_id': int, 'playcount': int},
+        nrows=nrows  # Adjust or remove nrows to read more data
     )
 
-    # Fit the NMF model to the sparse training data
-    W = nmf_model.fit_transform(V_train_sparse)
-    H = nmf_model.components_
-    
-    # Predict test values
-    test_user_indices = test_interactions['user_idx'].values
-    test_song_indices = test_interactions['song_idx'].values
-    test_play_counts = test_interactions['play_count'].values
-    
-    predicted_values = np.sum(W[test_user_indices, :] * H[:, test_song_indices].T, axis=1)
-    
-    # Clip predicted values to the range [0, 1] since we're dealing with binary data
-    predicted_values = np.clip(predicted_values, 0, 1)
+    # Rename columns to match expected format
+    data.rename(columns={"track_id": "itemId", "user_id": "userId", "playcount": "rating"}, inplace=True)
 
-    # Inspect Predicted Values for Test Set
-    print(f"First 10 predicted values: {predicted_values[:10]}")
-    print(f"First 10 actual test values: {test_play_counts[:10]}")
-    
-    # Check Variability in W and H Matrices
-    W_norm = np.linalg.norm(W)
-    H_norm = np.linalg.norm(H)
-    print(f"Rank: {rank}, W norm: {W_norm}, H norm: {H_norm}")
-    
-    # Compute RMSE on test set
-    rmse = root_mean_squared_error(test_play_counts, predicted_values)
-    print(f"Rank: {rank}, RMSE on test set: {rmse}")
-    
-    # Update best model
-    if rmse < best_rmse:
-        best_rmse = rmse
-        best_rank = rank
-        best_W, best_H = W, H
+    # Inspect the first few rows to ensure correct reading
+    print("Sampled Data:")
+    print(data.head())
 
-print(f"Best Rank: {best_rank}, Best RMSE: {best_rmse}")
+    # Binarizes or sets confidence level for the play counts
+    # data['rating'] = 1
+    alpha = 1
+    data['rating'] = 1 + alpha * np.log1p(data['rating'])  # log1p(x) = log(1 + x)
+
+    num_users = data['userId'].nunique()
+    num_tracks = data['itemId'].nunique()
+
+    print(f"Dataset Size: {len(data)} interactions")
+    print(f"Number of users: {num_users}")
+    print(f"Number of tracks: {num_tracks}")
+
+    return data
+
+def split_data(data, train_ratio, seed):
+    """
+    Splits the data into training and testing sets using Recommenders' framwork
+
+    Args:
+        data (pd.DataFrame): The complete dataset.
+
+    Returns:
+        train_data (pd.DataFrame): Training set.
+        test_data (pd.DataFrame): Testing set.
+    """
+    train, test = python_random_split(data, ratio=train_ratio, seed=seed)
+    print(f"Training data: {len(train)} interactions")
+    print(f"Test data: {len(test)} interactions")
+    return train, test
+
+def create_cornac_dataset(train, seed):
+    """
+    Converts pandas DataFrames into Cornac's Dataset format using itertuples.
+    
+    Args:
+        train_data (pd.DataFrame): Training set.
+    
+    Returns:
+        train_set (cornac.data.Dataset): Cornac-formatted training set.
+    """
+    # Reorder columns to (userId, itemId, rating) - expected order for Cornac
+    train = train[['userId', 'itemId', 'rating']]
+
+    # Create Cornac train dataset
+    train_set = cornac.data.Dataset.from_uir(train.itertuples(index=False), seed=seed)
+
+    # Calculate sparsity and density
+    num_users = train_set.num_users
+    num_items = train_set.num_items
+    num_observed_interactions = len(train)
+
+    total_possible_interactions = num_users * num_items
+    num_zero_interactions = total_possible_interactions - num_observed_interactions
+
+    sparsity = num_zero_interactions / total_possible_interactions
+    density = num_observed_interactions / total_possible_interactions
+
+    print("\nInteraction Matrix Statistics:")
+    print('Number of users: {}'.format(train_set.num_users))
+    print('Number of items: {}'.format(train_set.num_items))
+    print(f"Total possible interactions: {total_possible_interactions}")
+    print(f"Number of observed interactions: {num_observed_interactions}")
+    print(f"Number of zero interactions: {num_zero_interactions}")
+    print(f"Sparsity: {sparsity:.4f}")
+    print(f"Density: {density:.4f}")
+
+    return train_set
+
+def train_nmf_model(train_set, num_factors, num_epochs, seed=None):
+    nmf = cornac.models.NMF(
+        k=num_factors,
+        max_iter=num_epochs,
+        learning_rate=0.005,
+        lambda_u=0.06,
+        lambda_v=0.06,
+        lambda_bu=0.02,
+        lambda_bi=0.02,
+        use_bias=False,
+        verbose=True,
+        seed=seed,
+    )
+
+    with Timer() as t:
+        nmf.fit(train_set)
+    print("Took {} seconds for training.".format(t))
+
+    return nmf
+
+def evaluate_model(nmf, train, test, k):
+
+    with Timer() as t:
+        all_predictions = predict_ranking(nmf, train, usercol='userId', itemcol='itemId', predcol='prediction', remove_seen=True)
+
+    print("Test columns:", test.columns)
+    print("Predictions columns:", all_predictions.columns)
+
+
+    print("Took {} seconds for prediction.".format(t))
+
+    print("Predictions:")
+    print(all_predictions.head())
+
+    eval_rmse = rmse(rating_true=test, rating_pred=all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction')
+    eval_mae = mae(rating_true=test, rating_pred=all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction')
+    eval_map = map(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    eval_ndcg = ndcg_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    eval_precision = precision_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    eval_recall = recall_at_k(test, all_predictions, col_user='userId', col_item='itemId', col_rating='rating', col_prediction='prediction', k=k)
+    
+    print("RMSE:\t%f" % eval_rmse)
+    print("MAE:\t%f" % eval_mae)
+    print("MAP:\t%f" % eval_map)
+    print("NDCG:\t%f" % eval_ndcg)
+    print("Precision@K:\t%f" % eval_precision)
+    print("Recall@K:\t%f" % eval_recall)
+
+def main():
+    # Configuration
+    DATA_FILE_PATH = 'Modified_Listening_History.txt'  # Path to your dataset
+    NROWS = 10000  # Adjust as needed
+    TRAIN_RATIO = 0.8
+    SEED = 42
+    TOP_K = 10
+    NUM_FACTORS = 20
+    NUM_EPOCHS = 500
+
+
+    # Step 1: Load and preprocess data
+    data = read_data(DATA_FILE_PATH, nrows=NROWS)
+
+    # Step 2: Split data into training and testing sets
+    train, test = split_data(data, train_ratio=TRAIN_RATIO, seed=SEED)
+
+    # Step 3: Convert data to Cornac's Dataset format
+    train_set = create_cornac_dataset(train, seed=SEED)
+
+    # Step 4: Train and evaluate the Cornac NMF model
+    nmf_model = train_nmf_model(train_set, num_factors=NUM_FACTORS, num_epochs=NUM_EPOCHS)
+
+    # Step 5: Evaluate Cornac NMF model
+    evaluate_model(nmf_model, train, test, k=TOP_K)
+
+if __name__ == "__main__":
+    main()
+
+# Record results for tests - ignore this cell
+# store_metadata("map", eval_map)
+# store_metadata("ndcg", eval_ndcg)
+# store_metadata("precision", eval_precision)
+# store_metadata("recall", eval_recall)

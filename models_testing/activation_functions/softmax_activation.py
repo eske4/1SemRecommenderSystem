@@ -9,30 +9,28 @@ from sklearn.preprocessing import StandardScaler
 #                                            data handling
 
 # paths to datafiles
-
-
-file_path_music_data = r"../../remappings/data/Modified_Music_info.txt"
-file_path_user_data = r"../../remappings/data/Modified_Listening_History.txt"
+file_path_music_data = r"remappings/data/Modified_Music_info.txt"
+file_path_user_data = r"remappings/data/Modified_Listening_History.txt"
 
 # read data files (.txt with \t seperation)
 music_data = pd.read_csv(file_path_music_data, delimiter="\t")
 user_data = pd.read_csv(file_path_user_data, delimiter="\t")
 
+
+#for content based dont need userdata 
 # merge user and music data
 merged_data = pd.merge(music_data, user_data, on="track_id")
-
-# adjust data amount
-subset_dataset = merged_data.head(100000)
 
 # -----------------------------------------------------------------------------------------------------
 
 #                                          data preprocessing
 
 # select which features the model should use
-features = subset_dataset[["danceability", "energy", "valence", "tempo", "loudness"]]
+selected_features = ["danceability", "energy","key", "loudness", "mode", "speechiness","acousticness", "instrumentalness", "liveness", "valence", "tempo", ]
+features = music_data[selected_features]
 
 # select what the model should predict
-target = subset_dataset["track_id"]
+target = music_data["name"]
 
 # data splitting
 X_train, X_test, y_train, y_test = train_test_split(
@@ -75,10 +73,16 @@ model.compile(
 #                                          model training
 
 # training parameters
-model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
+model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.4)
 
-# example user parameters for singular song (e.g. track_id 0)
-user_input = np.array([[0.355, 0.918, 0.24, 148.114, -4.36]])
+#find track parameters based on song name id 
+user_history = [0] #insert name id for user id
+user_history_all_parameters = music_data[music_data["name"].isin(user_history)]
+user_history_selected_parameters = user_history_all_parameters[selected_features]
+user_history_selected_parameters_array = user_history_selected_parameters.values.tolist()
+
+# example user parameters for user song history 
+user_input = np.array(user_history_selected_parameters_array)
 user_input_scaled = scaler.transform(user_input)
 
 # number of songs wanted to be recommended to user
@@ -95,16 +99,23 @@ predictions = model.predict(user_input_scaled)
 
 # get top n predictions
 top_n_indices = np.argsort(predictions[0])[-num_recommendations:][::-1]
-
-# print predictions
 recommended_track_ids = [music_data["track_id"].values[i] for i in top_n_indices]
-print("Recommended Track IDs:", recommended_track_ids)
 
-# test on track_id 0 (10 epochs)
+# get song name
+name_id_file_path = r"remappings\data\names.txt"
+name_id = pd.read_csv(name_id_file_path, delimiter="\t")
+name_id.columns = ['track_name', 'id']
+recommended_track_names = name_id[name_id['id'].isin(recommended_track_ids)]
 
-# test_1: [0, 48, 44, 30, 29, 25, 14, 45, 67, 27]
-# test_2: [0, 48, 29, 44, 25, 30, 45, 64, 67, 14]
-# test_3: [0, 48, 30, 44, 14, 25, 29, 67, 45, 38]
-# test_4: [0, 48, 29, 45, 44, 64, 67, 30, 25, 38]
-# test_5: [0, 48, 30, 44, 29, 25, 14, 67, 45, 64]
+print("Recommended Tracks:",recommended_track_names)
 
+# get similarity score
+
+
+
+#brug dette til similarity score
+'''
+def recommend_similar_tracks(track_id, encoded_data, items):
+    sim_scores = cosine_similarity([encoded_data[track_id]], encoded_data)[0]
+    sorted_indices = np.argsort(sim_scores)[::-1]
+'''
