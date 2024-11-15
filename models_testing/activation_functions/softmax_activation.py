@@ -73,7 +73,7 @@ model.compile(
 #                                          model training
 
 # training parameters
-model.fit(X_train, y_train, epochs=50, batch_size=32, validation_split=0.2)
+model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.4)
 
 #find track parameters based on song name id 
 user_history = [0] #insert name id for user id
@@ -107,16 +107,7 @@ name_id = pd.read_csv(name_id_file_path, delimiter="\t")
 name_id.columns = ['track_name', 'id']
 recommended_track_names = name_id[name_id['id'].isin(recommended_track_ids)]
 
-# get artist name 
-artist_id_file_path = r"remappings\data\artists.txt"
-artists_id = pd.read_csv(artist_id_file_path, delimiter="\t")
-artists_id.columns = ['artist_name', 'id']
-recommended_track_artist = artists_id[artists_id['id'].isin(recommended_track_ids)]
-
-final_Recomendation_output = pd.merge(recommended_track_names, recommended_track_artist, on='id')
-
-
-print("Recommended Tracks:", recommended_track_artist,recommended_track_names)
+print("Recommended Tracks:",recommended_track_names)
 
 # get similarity score
 
