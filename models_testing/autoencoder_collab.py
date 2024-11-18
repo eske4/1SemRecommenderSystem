@@ -159,7 +159,7 @@ def main():
     data_path = "../remappings/data/Modified_Listening_History.txt"
 
     # Load ratings data
-    ratings = load_ratings_data(data_path, 1000)
+    ratings = load_ratings_data(data_path)
 
     # Create user-item matrix (ratings matrix)
     user_item_matrix = create_user_item_matrix(ratings)
