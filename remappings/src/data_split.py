@@ -10,8 +10,9 @@ user_counts = listening_history['user_id'].value_counts()
 track_counts = listening_history['track_id'].value_counts()
 
 # Keep only users and tracks that appear more than (whatever value you put in)
-multiple_users = user_counts[user_counts >= 50].index
 multiple_tracks = track_counts[track_counts > 1].index
+multiple_users = user_counts[user_counts >= 50].index
+
 
 filtered_listening_history = listening_history[
     (listening_history['user_id'].isin(multiple_users)) & 
