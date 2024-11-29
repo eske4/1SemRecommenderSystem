@@ -6,3 +6,4 @@ pandas
 pyspark
 recommenders[spark]
 cornac
+lenskit
