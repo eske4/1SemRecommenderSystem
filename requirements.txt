@@ -1,4 +1,4 @@
-numpy
+"numpy<2"
 scipy
 scikit-learn
 tensorflow
@@ -6,4 +6,3 @@ pandas
 pyspark
 recommenders[spark]
 cornac
-lenskit
