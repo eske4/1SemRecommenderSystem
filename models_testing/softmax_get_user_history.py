@@ -21,7 +21,7 @@ class SoftmaxGetUserHistory:
         binary_tags = pd.DataFrame(tags_binarized, columns=self.mlb.classes_.astype(str))
         music_dataset = pd.concat([music_dataset, binary_tags], axis=1)
 
-        excluded_columns = ['name', 'artist', 'tags', 'year', 'time_signature', 'duration_ms']
+        excluded_columns = ['name', 'artist', 'tags', 'year', 'time_signature', 'duration_ms', 'genre']
         prepared_music_dataset = music_dataset.drop(columns=excluded_columns)
 
         return prepared_music_dataset
@@ -39,7 +39,7 @@ class SoftmaxGetUserHistory:
 
         average_dataset.reset_index(inplace=True)
 
-        exclude_columns = ['user_id', 'track_id', 'playcount']
+        exclude_columns = ['track_id', 'playcount']
 
         average_dataset = average_dataset.drop(columns=exclude_columns)
 
@@ -61,10 +61,14 @@ def main():
 
     merged_dataset = ranking.merge_dataset(train_dataset, binarized_music_dataset)
 
+    print(merged_dataset)
+
     average_features_dataset = ranking.get_average_features(merged_dataset)
+
+    print(average_features_dataset)
 
     group_test = ranking.get_test_history(test_dataset)
 
-        
+    print(group_test)
 if __name__ == "__main__":
     main()

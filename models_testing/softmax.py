@@ -5,6 +5,7 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
 from softmax_get_user_history import SoftmaxGetUserHistory
+from lenskit.metrics import topn
 
 
 class SoftmaxRecommender:
@@ -42,16 +43,15 @@ class SoftmaxRecommender:
             "liveness", "valence", "tempo"
         ] + list(binary_tags.columns)
         
-        self.num_unique_tracks = self.music_data["name"].nunique()
+        self.num_unique_tracks = self.music_data["track_id"].nunique()
 
     def preprocess_data(self):
         features = self.music_data[self.selected_features]
-        target = self.music_data["name"]
-
+        target = self.music_data["track_id"]
         X_train, X_test, y_train, y_test = train_test_split(
             features, target, test_size=0.2, random_state=42
         )
-
+        
         self.scaler = StandardScaler()
         X_train = self.scaler.fit_transform(X_train.values)
         X_test = self.scaler.transform(X_test.values)
@@ -85,8 +85,8 @@ class SoftmaxRecommender:
         self.model.save(self.model_path)
 
     def recommend(self, user_history, num_recommendations=10):
-        user_input = np.array(user_history)
-
+        user_id = np.array(user_history[0][0])
+        user_input = np.array([user_history[0][1:]])
         user_input_scaled = self.scaler.transform(user_input)
 
         predictions = self.model.predict(user_input_scaled)
@@ -94,7 +94,7 @@ class SoftmaxRecommender:
         top_n_indices = np.argsort(predictions[0])[-num_recommendations:][::-1]
         top_n_predictions_scores = np.sort(predictions[0])[-num_recommendations:][::-1]
 
-        return top_n_indices.tolist()
+        return user_id, top_n_indices
 
 
 def main():
@@ -123,17 +123,39 @@ def main():
 
     average_features_dataset = ranking.get_average_features(merged_dataset)
 
-    user_history = [average_features_dataset.iloc[0]]
-    num_recommendations = 10
+    all_recommendations = []
 
-    recommendations = recommender.recommend(user_history, num_recommendations)
-    group_test = ranking.get_test_history(test_dataset)
+    for i in range(1000): 
+        user_history = [average_features_dataset.iloc[i]]
+        num_recommendations = 10
+        user_id, top_n_indices = recommender.recommend(user_history, num_recommendations)
+        
+        user_ranks = list(range(1, num_recommendations + 1))
+        song_ids = top_n_indices 
+        
+        for song, rank in zip(song_ids, user_ranks):
+            all_recommendations.append({
+                'item': song,
+                'user': user_id,      
+                'rank': rank     
+            })
+        print("step", i, "out of", len(average_features_dataset))
 
+    df_all_recommendations = pd.DataFrame(all_recommendations)
 
-    print(f"Top {num_recommendations} recommendations for user history:")
-    print(recommendations)
-    print(group_test.iloc[0])
+    test_dataset.drop(columns='playcount')
+    test_dataset.rename(columns={'track_id': 'item', 'user_id': 'user'}, inplace=True)
 
+    precision_score = topn.precision(test_dataset, df_all_recommendations, k=10)
+    print(f"Precision@3: {precision_score:.5f}")
+
+    # Recall@K Calculation
+    recall_score = topn.recall(test_dataset, df_all_recommendations, k=10)
+    print(f"Recall@3: {recall_score:.5f}")
+
+    # NDCG@K Calculation
+    ndcg_score = topn.ndcg(test_dataset, df_all_recommendations, k=10)
+    print(f"NDCG@3: {ndcg_score:.5f}")
 
 if __name__ == "__main__":
     main()
