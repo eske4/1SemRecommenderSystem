@@ -7,14 +7,10 @@ import cornac
 import pandas as pd
 import numpy as np
 
-
-from recommenders.datasets.python_splitters import python_random_split
-from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_at_k, recall_at_k, diversity, novelty, serendipity, catalog_coverage, distributional_coverage
-from recommenders.models.cornac.cornac_utils import predict_ranking, predict
+from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_at_k, recall_at_k, diversity, novelty
+from recommenders.models.cornac.cornac_utils import predict_ranking
 from recommenders.utils.timer import Timer
 from recommenders.utils.constants import SEED
-
-#from lenskit.metrics.topn import ndcg, precision, recall
 
 print(f"System version: {sys.version}")
 print(f"Cornac version: {cornac.__version__}")
@@ -31,8 +27,8 @@ NUM_FACTORS = 200
 NUM_EPOCHS = 100
 
 # Column names for the dataset
-COL_USER = "user"
-COL_TRACK = "item"
+COL_USER = "user_id"
+COL_TRACK = "track_id"
 COL_COUNT = "playcount"
 
 # %% [markdown]
@@ -57,7 +53,6 @@ test_listening_history["user_id"] = track_test
 
 train_listening_history["track_id"] = user_train
 train_listening_history["user_id"] = track_train
-
 
 test_listening_history.columns = [COL_USER, COL_TRACK, COL_COUNT]
 train_listening_history.columns = [COL_USER, COL_TRACK, COL_COUNT]
@@ -97,8 +92,7 @@ bpr = cornac.models.BPR(
     learning_rate=0.01,
     lambda_reg=0.001,
     verbose=True,
-    seed=SEED
-)
+    seed=SEED)
 
 # %%
 with Timer() as t:
@@ -123,24 +117,44 @@ all_prediction_sorted = all_predictions.sort_values(by=[COL_USER, 'prediction'],
 top_k_rec = all_prediction_sorted.groupby(COL_USER).head(TOP_K)
 
 # %%
-eval_map = map(test, all_predictions, col_user=COL_USER, col_item=COL_TRACK, col_prediction='prediction', k=TOP_K)
-eval_ndcg = ndcg_at_k(test, all_predictions, col_user=COL_USER, col_item=COL_TRACK, col_rating=COL_COUNT, col_prediction='prediction', k=TOP_K)
-eval_precision = precision_at_k(test, all_predictions, col_user=COL_USER, col_item=COL_TRACK, col_prediction='prediction', k=TOP_K)
-eval_recall = recall_at_k(test, all_predictions, col_user=COL_USER, col_item=COL_TRACK, col_prediction='prediction', k=TOP_K)
-eval_diversity = diversity(
-    train_df=train,
-    reco_df=top_k_rec,
-    col_user=COL_USER,
-    col_item=COL_TRACK
-)
-eval_novelty = novelty(
-    train_df=train,
-    reco_df=top_k_rec,
-    col_user=COL_USER,
-    col_item=COL_TRACK
-)
-# missing serendipity, catalog_coverage and distributional_coverage to be equal to the als metrics
-# may be incorrect
+eval_map = map(test, top_k_rec, 
+               col_user=COL_USER, 
+               col_item=COL_TRACK, 
+               col_prediction='prediction', 
+               k=TOP_K,
+               relevancy_method=None)
+
+eval_ndcg = ndcg_at_k(test, top_k_rec, 
+                      col_user=COL_USER, 
+                      col_item=COL_TRACK, 
+                      col_rating=COL_COUNT, 
+                      col_prediction='prediction', 
+                      k=TOP_K, 
+                      relevancy_method=None)
+
+eval_precision = precision_at_k(test, top_k_rec, 
+                                col_user=COL_USER, 
+                                col_item=COL_TRACK, 
+                                col_prediction='prediction', 
+                                k=TOP_K, 
+                                relevancy_method=None)
+
+eval_recall = recall_at_k(test, top_k_rec, 
+                          col_user=COL_USER, 
+                          col_item=COL_TRACK, 
+                          col_prediction='prediction', 
+                          k=TOP_K, 
+                          relevancy_method=None)
+
+eval_diversity = diversity(train_df=train,
+                           reco_df=top_k_rec,
+                           col_user=COL_USER,
+                           col_item=COL_TRACK)
+
+eval_novelty = novelty(train_df=train,
+                       reco_df=top_k_rec,
+                       col_user=COL_USER,
+                       col_item=COL_TRACK)
 
 # Print evaluation metrics, including diversity
 print("Precision@K Spark:\t%f" % eval_precision,
@@ -148,15 +162,5 @@ print("Precision@K Spark:\t%f" % eval_precision,
       "NDCG Spark:\t%f" % eval_ndcg,
       "Diversity Spark:\t%f" % eval_diversity,
       "Novelty Spark:\t%f" % eval_novelty, sep='\n')
-
-# %%
-# eval_ndcg_lens = ndcg(all_predictions, test, k=TOP_K)
-# eval_precision_lens = precision(all_predictions, test, k=TOP_K)
-# eval_recall_lens = recall(all_predictions, test, k=TOP_K)
-
-# # Print evaluation metrics, including diversity
-# print("Precision@K Lenskit:\t%f" % eval_precision_lens,
-#       "Recall@K Lenskit:\t%f" % eval_recall_lens,
-#       "NDCG Lenskit:\t%f" % eval_ndcg_lens, sep='\n')
 
 

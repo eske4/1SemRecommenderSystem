@@ -36,7 +36,8 @@ train_data = pd.concat(split_data["train"].tolist(), ignore_index=True)
 test_data = pd.concat(split_data["test"].tolist(), ignore_index=True)
 
 os.chdir("../data")
-os.mkdir("dataset")
+if not os.path.exists("dataset"):
+    os.mkdir("dataset")
 os.chdir("dataset")
 # Step 4: Save the Train and Test Split
 train_data.to_csv('train_listening_history_OverEqual_50_Interactions.txt', sep='\t', index=False)
