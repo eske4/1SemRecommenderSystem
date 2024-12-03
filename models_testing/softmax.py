@@ -5,7 +5,8 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
 from softmax_get_user_history import SoftmaxGetUserHistory
-from lenskit.metrics import topn
+from lenskit import topn
+
 
 
 class SoftmaxRecommender:
@@ -125,7 +126,7 @@ def main():
 
     all_recommendations = []
 
-    for i in range(1000): 
+    for i in range(len(average_features_dataset)): 
         user_history = [average_features_dataset.iloc[i]]
         num_recommendations = 10
         user_id, top_n_indices = recommender.recommend(user_history, num_recommendations)
@@ -143,19 +144,32 @@ def main():
 
     df_all_recommendations = pd.DataFrame(all_recommendations)
 
-    test_dataset.drop(columns='playcount')
+    
     test_dataset.rename(columns={'track_id': 'item', 'user_id': 'user'}, inplace=True)
 
-    precision_score = topn.precision(test_dataset, df_all_recommendations, k=10)
-    print(f"Precision@3: {precision_score:.5f}")
+    truth = test_dataset.drop(columns='playcount')
+    predicted = df_all_recommendations
+    truth['user'] = truth['user'].astype(int)
+    predicted['user'] = predicted['user'].astype(int)
 
-    # Recall@K Calculation
-    recall_score = topn.recall(test_dataset, df_all_recommendations, k=10)
-    print(f"Recall@3: {recall_score:.5f}")
+    predicted_test = pd.DataFrame({
+        'item': [29637, 11164, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3803, 4, 5, 6, 7, 8, 9, 10], 
+        'user': [11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0],
+        'rank': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    })
 
-    # NDCG@K Calculation
-    ndcg_score = topn.ndcg(test_dataset, df_all_recommendations, k=10)
-    print(f"NDCG@3: {ndcg_score:.5f}")
+    print("truth: ", truth, "predicted: ", predicted)
+
+    rla = topn.RecListAnalysis()
+    rla.add_metric(topn.precision)
+    rla.add_metric(topn.recall)
+
+    results = rla.compute(predicted, truth)
+    precision_at_k = results['precision'].mean()
+    recall_at_k = results['recall'].mean()
+
+    print(f'Precision@k: {precision_at_k:.10f}')
+    print(f'Recall@k: {recall_at_k:.10f}')
 
 if __name__ == "__main__":
     main()
