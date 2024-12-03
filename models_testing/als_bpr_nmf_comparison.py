@@ -33,7 +33,7 @@ print("Spark version: {}".format(pyspark.__version__))
 # top k items to recommend
 TOP_K = 50
 
-# Model parameters (BPR)
+# Model parameters (BPR & NMF)
 NUM_FACTORS = 200
 NUM_EPOCHS = 100
 
@@ -285,7 +285,7 @@ als_diversity_eval = SparkDiversityEvaluation(
 
 als_diversity_metrics = get_diversity_results_spark(als_diversity_eval)
 
-als_results = generate_summary(5, "als", TOP_K, als_ranking_metrics, als_diversity_metrics)
+als_results = generate_summary(train.count()+ test.count(), "als", TOP_K, als_ranking_metrics, als_diversity_metrics)
 
 # %% [markdown]
 # ## Pandas Loading of data
@@ -295,23 +295,11 @@ als_results = generate_summary(5, "als", TOP_K, als_ranking_metrics, als_diversi
 test_listening_history = pd.read_csv(header=0, delimiter="\t", filepath_or_buffer="../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt")
 train_listening_history = pd.read_csv(header=0, delimiter="\t", filepath_or_buffer="../remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt")
 
-# Change columns to correct place (user_id, track_id, playcount)
-track_test = test_listening_history["track_id"]
-user_test = test_listening_history["user_id"]
-
-track_train = train_listening_history["track_id"]
-user_train = train_listening_history["user_id"]
-
-test_listening_history["track_id"] = user_test
-test_listening_history["user_id"] = track_test
-
-train_listening_history["track_id"] = user_train
-train_listening_history["user_id"] = track_train
-
-test_listening_history.columns = [COL_USER, COL_TRACK, COL_COUNT]
-train_listening_history.columns = [COL_USER, COL_TRACK, COL_COUNT]
-
 train, test = train_listening_history, test_listening_history
+
+# Reorder columns to (User, Item, Rating) - expected order for Cornac
+train = train[[COL_USER, COL_TRACK, COL_COUNT]]
+test = test[[COL_USER, COL_TRACK, COL_COUNT]]
 
 # %% [markdown]
 # ### Building a Cornac Dataset
@@ -359,10 +347,50 @@ bpr_ranking_metrics = get_ranking_results_python(test, top_k_rec_bpr)
 
 bpr_diversity_metrics = get_diversity_results_python(train,top_k_rec_bpr)
 
-bpr_results = generate_summary(5, "bpr", TOP_K, bpr_ranking_metrics, bpr_diversity_metrics)
+bpr_results = generate_summary(train.size + test.size, "bpr", TOP_K, bpr_ranking_metrics, bpr_diversity_metrics)
 
 # %% [markdown]
-# To add more models create the another cell with the other model metrics and generate a summary
+# # NMF Model Train and prediction
+
+nmf = cornac.models.NMF(
+        k=NUM_FACTORS,
+        max_iter=NUM_EPOCHS,
+        learning_rate=0.01,
+        lambda_u=0.06,
+        lambda_v=0.06,
+        lambda_bu=0.02,
+        lambda_bi=0.02,
+        use_bias=False,
+        verbose=True,
+        seed=SEED,
+    )
+
+with Timer() as t:
+    nmf.fit(train_set)
+print("Took {} seconds for training.".format(t))
+
+with Timer() as t:
+    all_predictions_nmf = predict_ranking(nmf, train, usercol=COL_USER, itemcol=COL_TRACK, remove_seen=True)
+print("Took {} seconds for prediction.".format(t))
+
+all_predictions_nmf.head()
+
+all_prediction_sorted_nmf = all_predictions_nmf.sort_values(by=[COL_USER, 'prediction'], ascending=[True, False])
+
+# Select the top k predictions for each user
+top_k_rec_nmf = all_prediction_sorted_nmf.groupby(COL_USER).head(TOP_K)
+
+
+# %% [markdown]
+# ### NMF metrics
+
+# %%
+nmf_ranking_metrics = get_ranking_results_python(test, top_k_rec_nmf)
+
+nmf_diversity_metrics = get_diversity_results_python(train,top_k_rec_nmf)
+
+nmf_results = generate_summary(train.size + test.size, "nmf", TOP_K, nmf_ranking_metrics, nmf_diversity_metrics)
+
 
 # %% [markdown]
 # ## Create the results dataframe
@@ -374,9 +402,13 @@ df_results = pd.DataFrame(columns=cols)
 # add the models results here
 df_results.loc[1] = als_results 
 df_results.loc[2] = bpr_results
+df_results.loc[3] = nmf_results
 
 # %%
-df_results
+print(df_results.to_string())
+
+
+df_results.to_csv('../results/als_vs_bpr_vs_nmf.csv')
 
 # %%
 # cleanup spark instance
