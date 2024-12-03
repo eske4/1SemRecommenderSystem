@@ -1,39 +1,39 @@
 import pandas as pd
 from lenskit import topn
 
-# Example DataFrames
-# Ground truth interactions (test set)
-truth = pd.DataFrame({
-    'item': [101,102,3,4,5,6,7,8,9,10],
-    'user': [1,1,1,1,1,1,1,1,1,1],
-})
+class ContentEvaluation:
+    def __init__(self):
+        self.truth_data = pd.read_csv('remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt', delimiter='\t')
+        self.truth_data.rename(columns={'track_id': 'item', 'user_id': 'user'}, inplace=True)
 
-# Predicted recommendations from your system (both relevant items but ranked incorrectly)
-predicted = pd.DataFrame({
-    'item': [102, 101,30,40,50,60,70,80,90,100], 
-    'user': [1.0, 1.0,1.0, 1.0,1.0, 1.0,1.0, 1.0,1.0, 1.0],
-    'rank': [1, 2,3,4,5,6,7,8,9,10],
-})
+    def LenskitEvaluation(self, predictions: pd.DataFrame) -> tuple:
+        '''
+        predictions = pd.DataFrame({
+            'item': [Int], 
+            'user': [Int],
+            'rank': [Int],
+        })
+        '''
+        truth = self.truth_data
+        truth['user'] = truth['user'].astype(int)
+        predictions['user'] = predictions['user'].astype(int)
 
-print("truth: ", truth, "predicted: ", predicted)
+        # Futurewarning at ..\lenskit\metrics\topn.py line 100 and 149. replace lines with "scores['ngood'] = scores['ngood'].fillna(0)"
 
-# Initialize a RecListAnalysis object
-rla = topn.RecListAnalysis()
+        rla = topn.RecListAnalysis()
+        rla.add_metric(topn.precision)
+        rla.add_metric(topn.recall)
+        rla.add_metric(topn.hit)
+        
+        results = rla.compute(predictions, truth)
+        precision_at_k = results['precision'].mean()
+        recall_at_k = results['recall'].mean()
+        hit_ratio_at_k = results['hit'].mean()
 
-# Add the precision@k, recall@k, and ndcg@k metrics to evaluate
-rla.add_metric(topn.precision)
-rla.add_metric(topn.recall)
-rla.add_metric(topn.ndcg)
+        return precision_at_k, recall_at_k, hit_ratio_at_k
 
-# Evaluate precision@k, recall@k, and ndcg@k (e.g., k=5)
-results = rla.compute(predicted, truth)
+def main():
+    content_evaluation = ContentEvaluation()
 
-# Extract the metrics for evaluation
-precision_at_k = results['precision'].mean()
-recall_at_k = results['recall'].mean()
-ndcg_at_k = results['ndcg'].mean()
-
-# Print out the evaluation results
-print(f'Precision@5: {precision_at_k:.4f}')
-print(f'Recall@5: {recall_at_k:.4f}')
-print(f'NDCG@5: {ndcg_at_k:.4f}')
+if __name__ == '__main__':
+    main()

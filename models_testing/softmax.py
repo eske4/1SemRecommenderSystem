@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
 from softmax_get_user_history import SoftmaxGetUserHistory
 from lenskit import topn
+from softmax_model_evaluation import ContentEvaluation 
 
 
 
@@ -85,91 +86,71 @@ class SoftmaxRecommender:
 
         self.model.save(self.model_path)
 
-    def recommend(self, user_history, num_recommendations=10):
-        user_id = np.array(user_history[0][0])
-        user_input = np.array([user_history[0][1:]])
+    def recommend(self, user_history: pd.DataFrame, num_recommendations: int) -> tuple:
+        user_id = user_history.iloc[0, 0]
+        user_input = user_history.iloc[0, 1:].values.reshape(1, -1)
         user_input_scaled = self.scaler.transform(user_input)
 
         predictions = self.model.predict(user_input_scaled)
 
         top_n_indices = np.argsort(predictions[0])[-num_recommendations:][::-1]
-        top_n_predictions_scores = np.sort(predictions[0])[-num_recommendations:][::-1]
 
         return user_id, top_n_indices
+    
+    def get_all_recommendations(self, average_feature_df: pd.DataFrame) -> pd.DataFrame:
+        all_recommendations = []
+
+        for i in range(2000): 
+            print("step", i, "out of", len(average_feature_df))
+            user_history = average_feature_df.iloc[[i]]
+            num_recommendations = 10
+            user_id, top_n_indices = self.recommend(user_history, num_recommendations)
+            
+            user_ranks = list(range(1, num_recommendations + 1))
+            song_ids = top_n_indices 
+            
+            for song, rank in zip(song_ids, user_ranks):
+                all_recommendations.append({
+                    'item': song,
+                    'user': user_id,      
+                    'rank': rank     
+                })
+        
+        return pd.DataFrame(all_recommendations)
 
 
 def main():
     file_path = "remappings/data/Modified_Music_info.txt"
+    train_dataset = pd.read_csv('remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt', delimiter='\t')
+    music_dataset = pd.read_csv('remappings/data/Modified_Music_info.txt', delimiter='\t')
 
     recommender = SoftmaxRecommender(file_path)
 
     recommender.load_and_prepare_data()
-
     X_train, X_test, y_train, y_test = recommender.preprocess_data()
-
     recommender.load_model()
 
     if recommender.model is None:
         recommender.build_and_train_model(X_train, y_train)
 
-    test_dataset = pd.read_csv('remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt', delimiter='\t')
-    train_dataset = pd.read_csv('remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt', delimiter='\t')
-    music_dataset = pd.read_csv('remappings/data/Modified_Music_info.txt', delimiter='\t')
-    
-    ranking = SoftmaxGetUserHistory()
+    history = SoftmaxGetUserHistory()
+    binarized_music_dataset = history.prepare_musicdata(music_dataset)   
+    merged_dataset = history.merge_dataset(train_dataset, binarized_music_dataset)
+    average_feature_df = history.get_average_features(merged_dataset)
 
-    binarized_music_dataset = ranking.prepare_musicdata(music_dataset)   
 
-    merged_dataset = ranking.merge_dataset(train_dataset, binarized_music_dataset)
 
-    average_features_dataset = ranking.get_average_features(merged_dataset)
+    all_recommendations_df = recommender.get_all_recommendations(average_feature_df)
 
-    all_recommendations = []
-
-    for i in range(len(average_features_dataset)): 
-        user_history = [average_features_dataset.iloc[i]]
-        num_recommendations = 10
-        user_id, top_n_indices = recommender.recommend(user_history, num_recommendations)
-        
-        user_ranks = list(range(1, num_recommendations + 1))
-        song_ids = top_n_indices 
-        
-        for song, rank in zip(song_ids, user_ranks):
-            all_recommendations.append({
-                'item': song,
-                'user': user_id,      
-                'rank': rank     
-            })
-        print("step", i, "out of", len(average_features_dataset))
-
-    df_all_recommendations = pd.DataFrame(all_recommendations)
-
-    
-    test_dataset.rename(columns={'track_id': 'item', 'user_id': 'user'}, inplace=True)
-
-    truth = test_dataset.drop(columns='playcount')
-    predicted = df_all_recommendations
-    truth['user'] = truth['user'].astype(int)
-    predicted['user'] = predicted['user'].astype(int)
-
-    predicted_test = pd.DataFrame({
-        'item': [29637, 11164, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3803, 4, 5, 6, 7, 8, 9, 10], 
+    prediction_data_test = pd.DataFrame({
+        'item': [29637, 11164, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 
         'user': [11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0],
         'rank': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     })
 
-    print("truth: ", truth, "predicted: ", predicted)
-
-    rla = topn.RecListAnalysis()
-    rla.add_metric(topn.precision)
-    rla.add_metric(topn.recall)
-
-    results = rla.compute(predicted, truth)
-    precision_at_k = results['precision'].mean()
-    recall_at_k = results['recall'].mean()
-
-    print(f'Precision@k: {precision_at_k:.10f}')
-    print(f'Recall@k: {recall_at_k:.10f}')
+    content_evaluation = ContentEvaluation()
+    presicion, recall, hit_ratio = content_evaluation.LenskitEvaluation(all_recommendations_df)
+    print (f"precision@k: ", presicion,"recall@k: ", recall, "hit_ratio@k: ", hit_ratio)
 
 if __name__ == "__main__":
     main()
