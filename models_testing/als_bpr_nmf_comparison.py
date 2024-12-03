@@ -18,6 +18,7 @@ import recommenders.evaluation.python_evaluation as py_eval
 # data science imports
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 # recommenders imports
 
@@ -31,7 +32,11 @@ print("Spark version: {}".format(pyspark.__version__))
 
 # %%
 # top k items to recommend
-TOP_K = 50
+TOP_K50 = 50
+TOP_K25 = 25
+TOP_K10 = 10
+
+I_VALUE = 1
 
 # Model parameters (BPR & NMF)
 NUM_FACTORS = 200
@@ -59,32 +64,32 @@ def get_ranking_results_spark(ranking_eval):
     }
     return metrics   
 
-def get_ranking_results_python(test, top_k_rec_bpr):
+def get_ranking_results_python(test, top_k_rec_bpr, k):
     metrics = {
         "Precision@k": py_eval.precision_at_k(test, top_k_rec_bpr, 
                                 col_user=COL_USER, 
                                 col_item=COL_TRACK, 
                                 col_prediction='prediction', 
-                                k=TOP_K, 
+                                k=k, 
                                 relevancy_method=None),
         "Recall@k": py_eval.recall_at_k(test, top_k_rec_bpr, 
                           col_user=COL_USER, 
                           col_item=COL_TRACK, 
                           col_prediction='prediction', 
-                          k=TOP_K, 
+                          k=k, 
                           relevancy_method=None),
         "NDCG@k": py_eval.ndcg_at_k(test, top_k_rec_bpr, 
                       col_user=COL_USER, 
                       col_item=COL_TRACK, 
                       col_rating=COL_COUNT, 
                       col_prediction='prediction', 
-                      k=TOP_K, 
+                      k=k, 
                       relevancy_method=None),
         "Mean average precision": py_eval.map(test, top_k_rec_bpr, 
                col_user=COL_USER, 
                col_item=COL_TRACK, 
                col_prediction='prediction', 
-               k=TOP_K,
+               k=k,
                relevancy_method=None)
       
     }
@@ -110,7 +115,84 @@ def get_diversity_results_python(train, top_k_rec_bpr):
     }
     return metrics 
 
+# %% [markdown]
+# ## Create the results dataframe
 
+# %%
+cols = ["Data", "Algo", "K", "Precision@k", "Recall@k", "NDCG@k", "Mean average precision","novelty", "diversity"]
+df_results = pd.DataFrame(columns=cols)
+
+# %% [markdown]
+# ## Random Recommender Functions
+
+# %%
+def random_recommender(train_df, top_k):
+    """
+    Generates random recommendations for each user in train_df.
+
+    Args:
+        train_df (pd.DataFrame): Training data containing user-item interactions.
+        top_k (int): Number of recommendations per user.
+
+    Returns:
+        pd.DataFrame: Randomly recommended items for each user with random scores.
+    """
+    COL_USER = 'user_id'
+    COL_TRACK = 'track_id'
+    COL_PREDICTION = 'prediction'
+
+    # Get unique users and items
+    users = train_df[COL_USER].unique()
+    items = train_df[COL_TRACK].unique()
+    all_items = set(items)
+    
+    # Build a mapping from user to items seen
+    user_items_train = train_df.groupby(COL_USER)[COL_TRACK].apply(set).to_dict()
+    
+    recommendations = []
+    
+    for user in tqdm(users, desc="Generating random recommendations"):
+        seen_items = user_items_train.get(user, set())
+        unseen_items = np.array(list(all_items - seen_items))
+        if len(unseen_items) == 0:
+            continue  # No unseen items to recommend
+        num_to_sample = min(top_k, len(unseen_items))
+        sampled_items = np.random.choice(unseen_items, size=num_to_sample, replace=False)
+        scores = np.random.rand(num_to_sample)
+        user_recs = pd.DataFrame({
+            COL_USER: [user]*num_to_sample,
+            COL_TRACK: sampled_items,
+            COL_PREDICTION: scores
+        })
+        recommendations.append(user_recs)
+        
+    pred_df = pd.concat(recommendations, ignore_index=True)
+    return pred_df
+
+def evaluate_random_recommender(train, test, k):
+    """
+    Evaluates the random recommender using standard metrics.
+
+    Args:
+        train_df (pd.DataFrame): Training data.
+        test_df (pd.DataFrame): Testing data.
+        top_k (int): Number of recommendations per user.
+
+    Returns:
+        None
+    """
+
+    # Generate recommendations
+    pred_df = random_recommender(train, top_k=k)
+    
+    # Evaluate the recommendations
+    random_ranking_metrics = get_ranking_results_python(test, pred_df, k)
+
+    random_diversity_metrics = get_diversity_results_python(train,pred_df)
+
+    random_results = generate_summary(train.size + test.size, "random", k, random_ranking_metrics, random_diversity_metrics)
+
+    return random_results
 
 # %% [markdown]
 # Summary of the evaluation
@@ -133,7 +215,7 @@ def generate_summary(data, algo, k, ranking_metrics, diversity_metrics):
 # %%
 # the following settings work well for debugging locally on VM - change when running on a cluster
 # set up a giant single executor with many threads and specify memory cap
-spark = start_or_get_spark("ALS PySpark", memory="16g", config={'spark.local.dir': "/home/manuel-albino/spark-temp", 'spark.cleaner.ttl': "true"})
+spark = start_or_get_spark("ALS PySpark", memory="350g", config={'spark.local.dir': "/home/manuel-albino/spark-temp", 'spark.cleaner.ttl': "true"})
 spark.conf.set("spark.sql.analyzer.failAmbiguousSelfJoin", "false")
 
 spark.catalog.clearCache()
@@ -245,47 +327,54 @@ with Timer() as test_time:
     # Use an action to force execute and measure the test time 
     top_all_als.cache().count()
 
-    # top k recommendations for each user
-    window = Window.partitionBy(COL_USER).orderBy(F.col("prediction").desc())    
+ 
 
-    top_k_reco_als = top_all_als.select("*", F.row_number().over(window).alias("rank")).filter(F.col("rank") <= TOP_K).drop("rank")
-    
-    print(top_k_reco_als.count())
 
 print("Took {} seconds for prediction.".format(test_time.interval))
 
+top_all_als.show()
 
 
 # %%
-top_all_als.show()
+
 
 # %% [markdown]
 # ### ALS metrics 
 
+window = Window.partitionBy(COL_USER).orderBy(F.col("prediction").desc())    
 # %%
-als_ranking_eval = SparkRankingEvaluation(
-    test, 
-    top_all_als, 
-    k = TOP_K, 
-    col_user=COL_USER, 
-    col_item=COL_TRACK,
-    col_rating=COL_COUNT, 
-    col_prediction="prediction",
-    relevancy_method="top_k"
-)
+for k in [TOP_K10, TOP_K25, TOP_K50]:
+    # top k recommendations for each user
 
-als_ranking_metrics = get_ranking_results_spark(als_ranking_eval)
+    top_k_reco_als = top_all_als.select("*", F.row_number().over(window).alias("rank")).filter(F.col("rank") <= k).drop("rank")
 
-als_diversity_eval = SparkDiversityEvaluation(
-    train_df = train, 
-    reco_df = top_k_reco_als,
-    col_user = COL_USER, 
-    col_item = COL_TRACK
-)
+    als_ranking_eval = SparkRankingEvaluation(
+        test, 
+        top_all_als, 
+        k = k, 
+        col_user=COL_USER, 
+        col_item=COL_TRACK,
+        col_rating=COL_COUNT, 
+        col_prediction="prediction",
+        relevancy_method="top_k"
+    )
 
-als_diversity_metrics = get_diversity_results_spark(als_diversity_eval)
+    als_ranking_metrics = get_ranking_results_spark(als_ranking_eval)
 
-als_results = generate_summary(train.count()+ test.count(), "als", TOP_K, als_ranking_metrics, als_diversity_metrics)
+    als_diversity_eval = SparkDiversityEvaluation(
+        train_df = train, 
+        reco_df = top_k_reco_als,
+        col_user = COL_USER, 
+        col_item = COL_TRACK
+    )
+
+    als_diversity_metrics = get_diversity_results_spark(als_diversity_eval)
+
+    als_results = generate_summary(train.count()+ test.count(), "als", k, als_ranking_metrics, als_diversity_metrics)
+
+    # add the models results here
+    df_results.loc[I_VALUE] = als_results 
+    I_VALUE+=1
 
 # %% [markdown]
 # ## Pandas Loading of data
@@ -336,18 +425,19 @@ all_predictions_bpr.head()
 # Sort by 'user' and 'prediction' in descending order
 all_prediction_sorted_bpr = all_predictions_bpr.sort_values(by=[COL_USER, 'prediction'], ascending=[True, False])
 
-# Select the top k predictions for each user
-top_k_rec_bpr = all_prediction_sorted_bpr.groupby(COL_USER).head(TOP_K)
+for k in [TOP_K10, TOP_K25, TOP_K50]:
+    # Select the top k predictions for each user
+    top_k_rec_bpr = all_prediction_sorted_bpr.groupby(COL_USER).head(k)
 
-# %% [markdown]
-# ### BPR metrics
+    bpr_ranking_metrics = get_ranking_results_python(test, top_k_rec_bpr, k)
 
-# %%
-bpr_ranking_metrics = get_ranking_results_python(test, top_k_rec_bpr)
+    bpr_diversity_metrics = get_diversity_results_python(train,top_k_rec_bpr)
 
-bpr_diversity_metrics = get_diversity_results_python(train,top_k_rec_bpr)
+    bpr_results = generate_summary(train.size + test.size, "bpr", k, bpr_ranking_metrics, bpr_diversity_metrics)
 
-bpr_results = generate_summary(train.size + test.size, "bpr", TOP_K, bpr_ranking_metrics, bpr_diversity_metrics)
+    # add the models results here
+    df_results.loc[I_VALUE] = bpr_results 
+    I_VALUE+=1
 
 # %% [markdown]
 # # NMF Model Train and prediction
@@ -377,32 +467,28 @@ all_predictions_nmf.head()
 
 all_prediction_sorted_nmf = all_predictions_nmf.sort_values(by=[COL_USER, 'prediction'], ascending=[True, False])
 
-# Select the top k predictions for each user
-top_k_rec_nmf = all_prediction_sorted_nmf.groupby(COL_USER).head(TOP_K)
+for k in [TOP_K10, TOP_K25, TOP_K50]:
+    # Select the top k predictions for each user
+    top_k_rec_nmf = all_prediction_sorted_nmf.groupby(COL_USER).head(k)
+
+    nmf_ranking_metrics = get_ranking_results_python(test, top_k_rec_nmf, k)
+
+    nmf_diversity_metrics = get_diversity_results_python(train,top_k_rec_nmf)
+
+    nmf_results = generate_summary(train.size + test.size, "nmf", k, nmf_ranking_metrics, nmf_diversity_metrics)
+
+    # add the models results here
+    df_results.loc[I_VALUE] = nmf_results 
+    I_VALUE+=1
 
 
-# %% [markdown]
-# ### NMF metrics
 
-# %%
-nmf_ranking_metrics = get_ranking_results_python(test, top_k_rec_nmf)
+for k in [TOP_K10, TOP_K25, TOP_K50]:
+    random_results = evaluate_random_recommender(train, test, k)
 
-nmf_diversity_metrics = get_diversity_results_python(train,top_k_rec_nmf)
+    df_results[I_VALUE] = random_results
+    I_VALUE+=1
 
-nmf_results = generate_summary(train.size + test.size, "nmf", TOP_K, nmf_ranking_metrics, nmf_diversity_metrics)
-
-
-# %% [markdown]
-# ## Create the results dataframe
-
-# %%
-cols = ["Data", "Algo", "K", "Precision@k", "Recall@k", "NDCG@k", "Mean average precision","novelty", "diversity"]
-df_results = pd.DataFrame(columns=cols)
-
-# add the models results here
-df_results.loc[1] = als_results 
-df_results.loc[2] = bpr_results
-df_results.loc[3] = nmf_results
 
 # %%
 print(df_results.to_string())
