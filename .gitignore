@@ -3,3 +3,6 @@
 .venv
 /remappings/data
 /data
+/models_testing/__pycache__
+/models_testing/activation_functions/softmax.keras
+
