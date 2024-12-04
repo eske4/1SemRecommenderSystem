@@ -427,12 +427,9 @@ recommendations = []
 for user, seen_tracks in user_seen_tracks.items():
     # Get the set of unseen tracks for the user
     unseen_tracks = list(all_tracks - seen_tracks)
-    
-    # Randomly sample unseen tracks
-    #sampled_tracks = np.random.choice(unseen_tracks, size=num_to_sample, replace=False)
-    
+
     # Assign random prediction scores to the sampled tracks
-    prediction_scores = np.random.rand(unseen_tracks)
+    prediction_scores = np.random.rand(len(unseen_tracks))
     
     # Create recommendation entries with user, track, and prediction score
     user_recommendations = pd.DataFrame({
