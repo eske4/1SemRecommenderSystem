@@ -123,78 +123,6 @@ cols = ["Data", "Algo", "K", "Precision@k", "Recall@k", "NDCG@k", "Mean average 
 df_results = pd.DataFrame(columns=cols)
 
 # %% [markdown]
-# ## Random Recommender Functions
-
-# %%
-def random_recommender(train_df, top_k):
-    """
-    Generates random recommendations for each user in train_df.
-
-    Args:
-        train_df (pd.DataFrame): Training data containing user-item interactions.
-        top_k (int): Number of recommendations per user.
-
-    Returns:
-        pd.DataFrame: Randomly recommended items for each user with random scores.
-    """
-    COL_USER = 'user_id'
-    COL_TRACK = 'track_id'
-    COL_PREDICTION = 'prediction'
-
-    # Get unique users and items
-    users = train_df[COL_USER].unique()
-    items = train_df[COL_TRACK].unique()
-    all_items = set(items)
-    
-    # Build a mapping from user to items seen
-    user_items_train = train_df.groupby(COL_USER)[COL_TRACK].apply(set).to_dict()
-    
-    recommendations = []
-    
-    for user in tqdm(users, desc="Generating random recommendations"):
-        seen_items = user_items_train.get(user, set())
-        unseen_items = np.array(list(all_items - seen_items))
-        if len(unseen_items) == 0:
-            continue  # No unseen items to recommend
-        num_to_sample = min(top_k, len(unseen_items))
-        sampled_items = np.random.choice(unseen_items, size=num_to_sample, replace=False)
-        scores = np.random.rand(num_to_sample)
-        user_recs = pd.DataFrame({
-            COL_USER: [user]*num_to_sample,
-            COL_TRACK: sampled_items,
-            COL_PREDICTION: scores
-        })
-        recommendations.append(user_recs)
-        
-    pred_df = pd.concat(recommendations, ignore_index=True)
-    return pred_df
-
-def evaluate_random_recommender(train, test, k):
-    """
-    Evaluates the random recommender using standard metrics.
-
-    Args:
-        train_df (pd.DataFrame): Training data.
-        test_df (pd.DataFrame): Testing data.
-        top_k (int): Number of recommendations per user.
-
-    Returns:
-        None
-    """
-
-    # Generate recommendations
-    pred_df = random_recommender(train, top_k=k)
-    
-    # Evaluate the recommendations
-    random_ranking_metrics = get_ranking_results_python(test, pred_df, k)
-
-    random_diversity_metrics = get_diversity_results_python(train,pred_df)
-
-    random_results = generate_summary(train.size + test.size, "random", k, random_ranking_metrics, random_diversity_metrics)
-
-    return random_results
-
-# %% [markdown]
 # Summary of the evaluation
 
 # %%
@@ -481,12 +409,60 @@ for k in [TOP_K10, TOP_K25, TOP_K50]:
     df_results.loc[I_VALUE] = nmf_results 
     I_VALUE+=1
 
+# %% [markdown]
+# # Random Recommender and prediction
 
+# % 
+# Set the random seed for reproducibility
+np.random.seed(SEED)
+
+# Get all unique tracks from the training data
+all_tracks = set(train[COL_TRACK].unique())
+
+# Create a dictionary mapping each user to the set of tracks they've interacted with
+user_seen_tracks = train.groupby(COL_USER)[COL_TRACK].apply(set).to_dict()
+
+recommendations = []
+
+for user, seen_tracks in user_seen_tracks.items():
+    # Get the set of unseen tracks for the user
+    unseen_tracks = list(all_tracks - seen_tracks)
+    
+    # Randomly sample unseen tracks
+    #sampled_tracks = np.random.choice(unseen_tracks, size=num_to_sample, replace=False)
+    
+    # Assign random prediction scores to the sampled tracks
+    prediction_scores = np.random.rand(unseen_tracks)
+    
+    # Create recommendation entries with user, track, and prediction score
+    user_recommendations = pd.DataFrame({
+        COL_USER: user,
+        COL_TRACK: unseen_tracks,
+        'prediction': prediction_scores
+    })
+
+    # Sort by prediction score in descending order
+    user_recommendations = user_recommendations.sort_values(by='prediction', ascending=False)
+
+    # Append to the list of recommendations
+    recommendations.append(user_recommendations)
+
+# Concatenate all user recommendations into a single DataFrame
+all_prediction_sorted_random = pd.concat(recommendations, ignore_index=True)
 
 for k in [TOP_K10, TOP_K25, TOP_K50]:
-    random_results = evaluate_random_recommender(train, test, k)
 
-    df_results[I_VALUE] = random_results
+    # Select the top k predictions for each user
+    top_k_rec_random = all_prediction_sorted_random.groupby(COL_USER).head(k)
+
+    random_ranking_metrics = get_ranking_results_python(test, top_k_rec_random, k)
+
+    random_diversity_metrics = get_diversity_results_python(train,top_k_rec_random)
+
+    random_results = generate_summary(train.size + test.size, "random", k, random_ranking_metrics, random_diversity_metrics)
+
+    # add the models results here
+    df_results.loc[I_VALUE] = random_results 
     I_VALUE+=1
 
 
@@ -494,7 +470,7 @@ for k in [TOP_K10, TOP_K25, TOP_K50]:
 print(df_results.to_string())
 
 
-df_results.to_csv('../results/als_vs_bpr_vs_nmf.csv')
+df_results.to_csv('../results/als_vs_bpr_vs_nmf_vs_random_with_multiple_k.csv')
 
 # %%
 # cleanup spark instance
