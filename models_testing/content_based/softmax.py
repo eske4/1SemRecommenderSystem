@@ -21,6 +21,7 @@ class Softmax:
             return
         self.model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
         self.model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
+        self.isTrained = True
 
     def save(self, path):
         self.model.save(path)
