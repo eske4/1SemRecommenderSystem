@@ -6,7 +6,8 @@ class RankingMetrics:
     A class to calculate ranking metrics for a single user.
     """
 
-    def __init__(self, recommended, relevant, k):
+
+    def __init__(self, recommended=None, relevant=None, k=0):
         """
         Initialize the metrics calculator and compute all metrics.
 
@@ -15,16 +16,29 @@ class RankingMetrics:
             relevant (set): Set of relevant item IDs.
             k (int): Number of top items to consider.
         """
+
         self.recommended = recommended
         self.relevant = set(relevant)
         self.k = k
+        self.metrics_count = 0
 
-        # Precompute all metrics
-        self.precision_k = self.precision_at_k(k)
-        self.recall_k = self.recall_at_k(k)
-        self.ndcg_k = self.ndcg_at_k(k)
-        self.hit_k = self.hit_at_k(k)
-        self.map_k = self.mean_average_precision()
+        if len(recommended) > 0 and len(relevant) > 0 and k > 0:
+            # Precompute all metrics
+            self.precision_k = self.precision_at_k(k)
+            self.recall_k = self.recall_at_k(k)
+            self.ndcg_k = self.ndcg_at_k(k)
+            self.hit_k = self.hit_at_k(k)
+            self.map_k = self.mean_average_precision()
+            self.metrics_count += 1
+            
+        else:
+            # set all metrics to 0
+            self.precision_k = 0
+            self.recall_k = 0
+            self.ndcg_k = 0
+            self.hit_k = 0
+            self.map_k = 0
+
 
     def __add__(self, other):
         """
@@ -38,18 +52,23 @@ class RankingMetrics:
         """
         if not isinstance(other, RankingMetrics):
             raise ValueError("Can only add instances of RankingMetrics.")
-
-        return RankingMetrics(
-            recommended=[],
-            relevant=set(),
-            k=self.k,  # Use the same k
-        )._set_aggregated_metrics(
+        
+        # Create a new aggregated instance with empty recommended and relevant
+        new_instance = RankingMetrics(recommended=[], relevant=set(), k=self.k)
+        
+        # Aggregate metrics
+        new_instance._set_aggregated_metrics(
             precision_k=self.precision_k + other.precision_k,
             recall_k=self.recall_k + other.recall_k,
             ndcg_k=self.ndcg_k + other.ndcg_k,
             hit_k=self.hit_k + other.hit_k,
             map_k=self.map_k + other.map_k,
         )
+    
+        # Combine metrics_count
+        new_instance.metrics_count = self.metrics_count + other.metrics_count
+        
+        return new_instance
 
     def _set_aggregated_metrics(self, precision_k, recall_k, ndcg_k, hit_k, map_k):
         """
@@ -116,9 +135,9 @@ class RankingMetrics:
             dict: Dictionary containing Precision@k, Recall@k, NDCG@k, Hit@k, and MAP.
         """
         return {
-            "Precision@k": self.precision_k,
-            "Recall@k": self.recall_k,
-            "NDCG@k": self.ndcg_k,
-            "Hit@k": self.hit_k,
-            "MAP": self.map_k,
+            "Precision@k": self.precision_k/self.metrics_count,
+            "Recall@k": self.recall_k/self.metrics_count,
+            "NDCG@k": self.ndcg_k/self.metrics_count,
+            "Hit@k": self.hit_k/self.metrics_count,
+            "MAP": self.map_k/self.metrics_count,
         }

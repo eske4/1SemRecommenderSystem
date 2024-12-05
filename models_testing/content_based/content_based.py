@@ -289,8 +289,10 @@ def main():
     )
 
     user_ids = get_all_user(raw_ratings)
+    test_set = user_ids[0:10]
+    mean_ranking = RankingMetrics([],[],10)
 
-    for user in user_ids:
+    for user in test_set:
 
         input_feature = aggregate_user_preference(
             user_id=user,
@@ -308,11 +310,15 @@ def main():
 
         # Initialize the metrics calculator
         metrics = RankingMetrics(similar_indices, user_ratings, k)
+        mean_ranking += metrics
 
         summary = metrics.metrics_summary()
 
         # Print results
         print(f"user: {user} Metrics Summary@{k}: {summary}")
+
+    print(f"mean rating: Metrics Summary@{k}: {mean_ranking.metrics_summary()}")
+    
 
 
 if __name__ == "__main__":
