@@ -304,12 +304,12 @@ def main():
             input_feature, decoded_test, data_normalized, combined_data
         )
 
-        # Initialize the metrics calculator
-        metrics = RankingMetrics(similar_indices, user_ratings)
-
-        # Calculate metrics
         k = 10
-        summary = metrics.metrics_summary(k)
+
+        # Initialize the metrics calculator
+        metrics = RankingMetrics(similar_indices, user_ratings, k)
+
+        summary = metrics.metrics_summary()
 
         # Print results
         print(f"user: {user} Metrics Summary@{k}: {summary}")

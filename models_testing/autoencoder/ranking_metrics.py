@@ -6,27 +6,63 @@ class RankingMetrics:
     A class to calculate ranking metrics for a single user.
     """
 
-    def __init__(self, recommended, relevant):
+    def __init__(self, recommended, relevant, k):
         """
-        Initialize the metrics calculator.
+        Initialize the metrics calculator and compute all metrics.
 
         Parameters:
             recommended (list): List of recommended item IDs (ordered by relevance).
             relevant (set): Set of relevant item IDs.
+            k (int): Number of top items to consider.
         """
         self.recommended = recommended
         self.relevant = set(relevant)
+        self.k = k
 
-    def precision_at_k(self, k):
+        # Precompute all metrics
+        self.precision_k = self.precision_at_k(k)
+        self.recall_k = self.recall_at_k(k)
+        self.ndcg_k = self.ndcg_at_k(k)
+        self.hit_k = self.hit_at_k(k)
+        self.map_k = self.mean_average_precision()
+
+    def __add__(self, other):
         """
-        Calculate Precision@k.
+        Add two RankingMetrics instances by aggregating their metrics.
 
         Parameters:
-            k (int): Number of top items to consider.
+            other (RankingMetrics): Another instance of RankingMetrics.
 
         Returns:
-            float: Precision@k score.
+            RankingMetrics: A new instance with aggregated metrics.
         """
+        if not isinstance(other, RankingMetrics):
+            raise ValueError("Can only add instances of RankingMetrics.")
+
+        return RankingMetrics(
+            recommended=[],
+            relevant=set(),
+            k=self.k,  # Use the same k
+        )._set_aggregated_metrics(
+            precision_k=self.precision_k + other.precision_k,
+            recall_k=self.recall_k + other.recall_k,
+            ndcg_k=self.ndcg_k + other.ndcg_k,
+            hit_k=self.hit_k + other.hit_k,
+            map_k=self.map_k + other.map_k,
+        )
+
+    def _set_aggregated_metrics(self, precision_k, recall_k, ndcg_k, hit_k, map_k):
+        """
+        Set precomputed metrics for an aggregated instance.
+        """
+        self.precision_k = precision_k
+        self.recall_k = recall_k
+        self.ndcg_k = ndcg_k
+        self.hit_k = hit_k
+        self.map_k = map_k
+        return self
+
+    def precision_at_k(self, k):
         if k == 0:
             return 0.0
         top_k = self.recommended[:k]
@@ -34,15 +70,6 @@ class RankingMetrics:
         return relevant_count / k
 
     def recall_at_k(self, k):
-        """
-        Calculate Recall@k.
-
-        Parameters:
-            k (int): Number of top items to consider.
-
-        Returns:
-            float: Recall@k score.
-        """
         if not self.relevant:
             return 0.0
         top_k = self.recommended[:k]
@@ -50,19 +77,9 @@ class RankingMetrics:
         return relevant_count / len(self.relevant)
 
     def ndcg_at_k(self, k):
-        """
-        Calculate Normalized Discounted Cumulative Gain (NDCG)@k.
-
-        Parameters:
-            k (int): Number of top items to consider.
-
-        Returns:
-            float: NDCG@k score.
-        """
         top_k = self.recommended[:k]
         dcg = sum(
-            int(item in self.relevant)
-            / np.log2(idx + 2)  # idx + 2 because log2(1) is undefined
+            int(item in self.relevant) / np.log2(idx + 2)
             for idx, item in enumerate(top_k)
         )
         ideal_dcg = sum(
@@ -71,25 +88,10 @@ class RankingMetrics:
         return dcg / ideal_dcg if ideal_dcg > 0 else 0.0
 
     def hit_at_k(self, k):
-        """
-        Calculate Hit@k.
-
-        Parameters:
-            k (int): Number of top items to consider.
-
-        Returns:
-            float: Hit@k score (1.0 if any relevant item is in the top-k, otherwise 0.0).
-        """
         top_k = self.recommended[:k]
         return 1.0 if any(item in self.relevant for item in top_k) else 0.0
 
     def average_precision(self):
-        """
-        Calculate Average Precision (AP).
-
-        Returns:
-            float: Average Precision score.
-        """
         if not self.relevant:
             return 0.0
 
@@ -104,28 +106,19 @@ class RankingMetrics:
         return precision_sum / len(self.relevant)
 
     def mean_average_precision(self):
-        """
-        Calculate Mean Average Precision (MAP).
-
-        Returns:
-            float: Mean Average Precision score.
-        """
         return self.average_precision()
 
-    def metrics_summary(self, k):
+    def metrics_summary(self):
         """
-        Get a summary of all metrics at a specific k.
-
-        Parameters:
-            k (int): Number of top items to consider.
+        Get a summary of all precomputed metrics.
 
         Returns:
             dict: Dictionary containing Precision@k, Recall@k, NDCG@k, Hit@k, and MAP.
         """
         return {
-            "Precision@k": self.precision_at_k(k),
-            "Recall@k": self.recall_at_k(k),
-            "NDCG@k": self.ndcg_at_k(k),
-            "Hit@k": self.hit_at_k(k),
-            "MAP": self.mean_average_precision(),
+            "Precision@k": self.precision_k,
+            "Recall@k": self.recall_k,
+            "NDCG@k": self.ndcg_k,
+            "Hit@k": self.hit_k,
+            "MAP": self.map_k,
         }
