@@ -100,7 +100,7 @@ class SoftmaxRecommender:
     def get_all_recommendations(self, average_feature_df: pd.DataFrame) -> pd.DataFrame:
         all_recommendations = []
 
-        for i in range(3000): 
+        for i in range(len(average_feature_df)): 
             print("step", i, "out of", len(average_feature_df))
             user_history = average_feature_df.iloc[[i]]
             num_recommendations = 10
