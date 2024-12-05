@@ -100,7 +100,7 @@ class SoftmaxRecommender:
     def get_all_recommendations(self, average_feature_df: pd.DataFrame) -> pd.DataFrame:
         all_recommendations = []
 
-        for i in range(2000): 
+        for i in range(3000): 
             print("step", i, "out of", len(average_feature_df))
             user_history = average_feature_df.iloc[[i]]
             num_recommendations = 10
@@ -138,19 +138,14 @@ def main():
     merged_dataset = history.merge_dataset(train_dataset, binarized_music_dataset)
     average_feature_df = history.get_average_features(merged_dataset)
 
-
-
     all_recommendations_df = recommender.get_all_recommendations(average_feature_df)
 
-    prediction_data_test = pd.DataFrame({
-        'item': [29637, 11164, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 
-        'user': [11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 11.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0],
-        'rank': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    })
-
     content_evaluation = ContentEvaluation()
-    presicion, recall, hit_ratio = content_evaluation.LenskitEvaluation(all_recommendations_df)
-    print (f"precision@k: ", presicion,"recall@k: ", recall, "hit_ratio@k: ", hit_ratio)
+    presicion_lk, recall_lk, hit_ratio_lk, ndgc_lk = content_evaluation.LenskitEvaluation(all_recommendations_df)
+    print (f"precision@k: ", presicion_lk,"recall@k: ", recall_lk, "ndgc: ", ndgc_lk, "hit_ratio@k: ", hit_ratio_lk)
+    
+    presicion, recall, ndgc, map = content_evaluation.RecommenderEvaluation(all_recommendations_df, 10)
+    print (f"precision@k: ", presicion,"recall@k: ", recall, "ndgc: ", ndgc, "map: ", map)
 
 if __name__ == "__main__":
     main()
