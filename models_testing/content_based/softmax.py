@@ -13,7 +13,7 @@ class Softmax:
         self.isTrained = False
 
     def train(self, X_train, y_train):
-        if(self.isTrained == False): 
+        if(self.isTrained == True): 
             print("Is already trained")
             return
         if(X_train == None or y_train == None):
