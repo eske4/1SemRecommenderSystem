@@ -185,7 +185,7 @@ def get_recommendations(track_id, encoded_data, items_with_metadata):
 
 # Refined function to get diverse recommendations based on feature vector
 def get_diverse_recommendations(
-    encoded_data, input_features, items, top_n=10, min_score=0.7, max_score=0.5
+    encoded_data, input_features, items, top_n=10, min_score=0.5, max_score=0.7
 ):
     # Calculate similarity scores between input_features and all encoded items
     sim_scores = cosine_similarity([input_features], encoded_data)[
