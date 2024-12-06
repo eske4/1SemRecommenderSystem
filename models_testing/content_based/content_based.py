@@ -68,14 +68,15 @@ def main():
         data=tracks, latent_dim=90, meta_data=meta
     )
 
-    # Get 10 users for testings
-    user_ids = UserProfileBuilder.get_all_users(ratings)[:10]
+    # Get 100 users for testings
+    user_ids = UserProfileBuilder.get_all_users(ratings)[:100]
 
     # prepare for ranking
     mean_ranking = RankingMetrics()
 
     for user in user_ids:
 
+        top_n = 10
         # Get the average profile of the user tracks
         input_feature = UserProfileBuilder.aggregate_user_preference(
             user, ratings, autoencode_recommender.encoded_data
@@ -86,7 +87,7 @@ def main():
 
         # Recommend with autoencoder
         indices, scores, similar_items = autoencode_recommender.recommend_similar_items(
-            input_feature, top_n=50
+            input_feature, top_n=top_n
         )
 
         # Calculate diversity_score AILD
@@ -96,8 +97,9 @@ def main():
         print(f"Diversity score: {diversity_score}")
 
         # Add user to the ranking metrics and display
-        mean_ranking += RankingMetrics(indices, user_ratings, 50)
-        print(f"user {user} Metrics Summary@10: {mean_ranking.metrics_summary()}")
+        ranking = RankingMetrics(indices, user_ratings, top_n)
+        mean_ranking += ranking
+        print(f"user {user} Metrics Summary@10: {ranking.metrics_summary()}")
 
     # Print the final score
     print(f"mean rating Metrics Summary@10: {mean_ranking.metrics_summary()}")
