@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer
 
 
-def preprocess_data(data):
+def preprocess_data(data, scaler=MinMaxScaler()):
     metadata = data[["name", "artist", "track_id"]]
     features = data.drop(columns=["name", "artist", "track_id"], errors="ignore")
     features["genre"] = features["genre"].astype("category")
@@ -36,7 +36,6 @@ def preprocess_data(data):
         columns=["genre", "tags", "year"], errors="ignore"
     )
 
-    scaler = MinMaxScaler()
     processed_data = pd.DataFrame(
         scaler.fit_transform(processed_data), columns=processed_data.columns
     )
