@@ -8,93 +8,94 @@ from utils.user_profile_builder import UserProfileBuilder
 
 
 def load_data():
-    tracks_path = "../../remappings/data/Modified_Music_info.txt"
-    ratings_path = "../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt"
-    tracks = pd.read_csv(tracks_path, delimiter="\t")
-    ratings = pd.read_csv(ratings_path, delimiter="\t")
-    return tracks, ratings
+    return pd.read_csv(
+        "../../remappings/data/Modified_Music_info.txt", delimiter="\t"
+    ), pd.read_csv(
+        "../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt",
+        delimiter="\t",
+    )
 
 
 def preprocess_data(data, scaler=MinMaxScaler()):
-    metadata = data[["name", "artist", "track_id"]]
+    meta = data[["name", "artist", "track_id"]]
     features = data.drop(columns=["name", "artist", "track_id"], errors="ignore")
     features["genre"] = features["genre"].astype("category")
 
+    # Handle tags, ensuring that we don't attempt to split non-string values
     features["tags"] = features["tags"].apply(
         lambda x: (
             eval(x)
-            if isinstance(x, str) and x.startswith("[") and x.endswith("]")
-            else (
-                [tag.strip() for tag in x.split(",") if tag.strip()]
-                if isinstance(x, str)
-                else []
-            )
+            if isinstance(x, str) and x.startswith("[")
+            else ([tag.strip() for tag in x.split(",")] if isinstance(x, str) else [])
         )
     )
 
+    # Initialize MultiLabelBinarizer and fit it to the tags data
     mlb = MultiLabelBinarizer()
     tags_encoded = pd.DataFrame(
         mlb.fit_transform(features["tags"]), columns=mlb.classes_
     ).add_prefix("tag_")
+
     genre_encoded = pd.get_dummies(features["genre"], prefix="genre")
 
+    # Combine the processed data
     processed_data = pd.concat([features, genre_encoded, tags_encoded], axis=1)
     processed_data = processed_data.drop(
         columns=["genre", "tags", "year"], errors="ignore"
     )
 
+    # Scale the features
     processed_data = pd.DataFrame(
         scaler.fit_transform(processed_data), columns=processed_data.columns
     )
 
-    return processed_data, metadata
+    return processed_data, meta
 
 
-# Main function to execute the pipeline
 def main():
+
+    # Load and process the data
     tracks, ratings = load_data()
+    tracks, meta = preprocess_data(tracks)
 
-    # Preprocess data
-    tracks, tracks_meta_data = preprocess_data(tracks)
-
+    # Initialize autoencoder recommender
     autoencode_recommender = AutoencodeRecommender(
-        data=tracks, latent_dim=90, meta_data=tracks_meta_data
+        data=tracks, latent_dim=90, meta_data=meta
     )
 
-    user_ids = UserProfileBuilder.get_all_users(ratings)
-    test_set = user_ids[0:10]
+    # Get 10 users for testings
+    user_ids = UserProfileBuilder.get_all_users(ratings)[:10]
+
+    # prepare for ranking
     mean_ranking = RankingMetrics()
 
-    for user in test_set:
+    for user in user_ids:
 
+        # Get the average profile of the user tracks
         input_feature = UserProfileBuilder.aggregate_user_preference(
-            user_id=user,
-            ratings=ratings,
-            tracks=autoencode_recommender.encoded_data,
-        )
-        user_ratings = UserProfileBuilder.get_rated_list(user_id=user, ratings=ratings)
-
-        similar_indices, similar_score, similar_items = (
-            autoencode_recommender.recommend_similar_items(input_feature, top_n=50)
+            user, ratings, autoencode_recommender.encoded_data
         )
 
-        k = 10
+        # Get the list of the users listened tracks
+        user_ratings = UserProfileBuilder.get_rated_list(user, ratings)
 
-        # Initialize the metrics calculator
-        metrics = RankingMetrics(similar_indices, user_ratings, k)
+        # Recommend with autoencoder
+        indices, scores, similar_items = autoencode_recommender.recommend_similar_items(
+            input_feature, top_n=50
+        )
+
+        # Calculate diversity_score AILD
         diversity_score = DiversityMetrics.average_intra_list_distance(
             pd.DataFrame(similar_items).drop(columns=["name", "artist", "track_id"])
         )
-        print(len(similar_items))
-        print(f"Diversity score is: {diversity_score}")
-        mean_ranking += metrics
+        print(f"Diversity score: {diversity_score}")
 
-        summary = metrics.metrics_summary()
+        # Add user to the ranking metrics and display
+        mean_ranking += RankingMetrics(indices, user_ratings, 50)
+        print(f"user {user} Metrics Summary@10: {mean_ranking.metrics_summary()}")
 
-        # Print results
-        print(f"user: {user} Metrics Summary@{k}: {summary}")
-
-    print(f"mean rating: Metrics Summary@{k}: {mean_ranking.metrics_summary()}")
+    # Print the final score
+    print(f"mean rating Metrics Summary@10: {mean_ranking.metrics_summary()}")
 
 
 if __name__ == "__main__":
