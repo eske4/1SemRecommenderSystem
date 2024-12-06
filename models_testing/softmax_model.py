@@ -74,7 +74,7 @@ class SoftmaxRecommender:
 
     def build_and_train_model(self, X_train, y_train):
         self.model = tf.keras.Sequential([
-            tf.keras.layers.Input(shape=(X_train.shape[1],)),
+            tf.keras.layers.Input(shape=(X_train.shape[1])),
             tf.keras.layers.Dense(128, activation="relu"),
             tf.keras.layers.Dropout(0.2),
             tf.keras.layers.Dense(self.num_unique_tracks, activation="softmax"),
