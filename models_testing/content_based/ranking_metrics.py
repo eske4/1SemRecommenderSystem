@@ -6,8 +6,7 @@ class RankingMetrics:
     A class to calculate ranking metrics for a single user.
     """
 
-
-    def __init__(self, recommended=None, relevant=None, k=0):
+    def __init__(self, recommended=[], relevant=[], k=0):
         """
         Initialize the metrics calculator and compute all metrics.
 
@@ -30,7 +29,7 @@ class RankingMetrics:
             self.hit_k = self.hit_at_k(k)
             self.map_k = self.mean_average_precision()
             self.metrics_count += 1
-            
+
         else:
             # set all metrics to 0
             self.precision_k = 0
@@ -38,7 +37,6 @@ class RankingMetrics:
             self.ndcg_k = 0
             self.hit_k = 0
             self.map_k = 0
-
 
     def __add__(self, other):
         """
@@ -52,10 +50,10 @@ class RankingMetrics:
         """
         if not isinstance(other, RankingMetrics):
             raise ValueError("Can only add instances of RankingMetrics.")
-        
+
         # Create a new aggregated instance with empty recommended and relevant
         new_instance = RankingMetrics(recommended=[], relevant=set(), k=self.k)
-        
+
         # Aggregate metrics
         new_instance._set_aggregated_metrics(
             precision_k=self.precision_k + other.precision_k,
@@ -64,10 +62,10 @@ class RankingMetrics:
             hit_k=self.hit_k + other.hit_k,
             map_k=self.map_k + other.map_k,
         )
-    
+
         # Combine metrics_count
         new_instance.metrics_count = self.metrics_count + other.metrics_count
-        
+
         return new_instance
 
     def _set_aggregated_metrics(self, precision_k, recall_k, ndcg_k, hit_k, map_k):
@@ -135,9 +133,9 @@ class RankingMetrics:
             dict: Dictionary containing Precision@k, Recall@k, NDCG@k, Hit@k, and MAP.
         """
         return {
-            "Precision@k": self.precision_k/self.metrics_count,
-            "Recall@k": self.recall_k/self.metrics_count,
-            "NDCG@k": self.ndcg_k/self.metrics_count,
-            "Hit@k": self.hit_k/self.metrics_count,
-            "MAP": self.map_k/self.metrics_count,
+            "Precision@k": self.precision_k / self.metrics_count,
+            "Recall@k": self.recall_k / self.metrics_count,
+            "NDCG@k": self.ndcg_k / self.metrics_count,
+            "Hit@k": self.hit_k / self.metrics_count,
+            "MAP": self.map_k / self.metrics_count,
         }
