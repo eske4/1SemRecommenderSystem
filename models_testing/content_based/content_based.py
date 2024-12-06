@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-from autoencode_recommender import AutoencodeRecommender
-from diversity_metrics import DiversityMetrics
-from ranking_metrics import RankingMetrics
+from custom_recommenders.autoencode_recommender import AutoencodeRecommender
+from metrics.diversity_metrics import DiversityMetrics
+from metrics.ranking_metrics import RankingMetrics
 from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer
-from user_profile_builder import UserProfileBuilder
+from utils.user_profile_builder import UserProfileBuilder
 
 
 def load_data():

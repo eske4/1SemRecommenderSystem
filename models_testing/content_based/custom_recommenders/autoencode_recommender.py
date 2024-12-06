@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from autoencoder import Autoencoder
+from models.autoencoder import Autoencoder
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 

@@ -2,8 +2,13 @@ import numpy as np
 
 
 class UserProfileBuilder:
+
+    def __init__(self):
+        """Initialize the UserProfileBuilder class."""
+        pass
+
     """
-    A class to create user profiles from a ratings matrix and track features.
+    ass to create user profiles from a ratings matrix and track features.
 
     This class aggregates user preferences, retrieves user interactions,
     and processes data to create profiles suitable for recommendation systems.
