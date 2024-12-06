@@ -47,3 +47,19 @@ class Autoencoder(Model):
 
     def predict(self, x):
         return self.autoencoder.predict(x)
+
+    def validate(self, test_data):
+        """
+        Validates the autoencoder on test data by calculating reconstruction loss.
+        """
+        # Compute the reconstruction loss
+        loss = self.autoencoder.evaluate(test_data, test_data, verbose=2)
+        print(f"Reconstruction Loss: {loss}")
+
+        # Compute reconstruction errors for each sample
+        reconstructed = self.autoencoder.predict(test_data)
+        errors = tf.reduce_mean(
+            tf.square(test_data - reconstructed), axis=tuple(range(1, test_data.ndim))
+        )
+
+        return loss, errors

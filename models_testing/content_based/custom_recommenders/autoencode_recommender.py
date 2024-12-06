@@ -20,6 +20,7 @@ class AutoencodeRecommender:
             self.data, test_size=0.2, random_state=42
         )
         autoencoder = Autoencoder(self.latent_dim, train_data, "")
+        autoencoder.validate(test_data)
         return pd.DataFrame(autoencoder.predict(self.data), columns=self.data.columns)
 
     def __sort_by_distance(self, input_feature, encoded_data, items):
