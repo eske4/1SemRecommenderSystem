@@ -8,19 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer
 
 
-# Load track features from file
-def load_track_features(path, max_rows=None):
-    return pd.read_csv(path, delimiter="\t", nrows=max_rows)
-
-
-# Prepare data by normalizing it
-def prepare_data(data):
-    scaler = MinMaxScaler()
-    data_normalized = scaler.fit_transform(data)
-    return data_normalized, scaler
-
-
-def preprocess_features(data):
+def preprocess_data(data):
     metadata = data[["name", "artist", "track_id"]]
     features = data.drop(columns=["name", "artist", "track_id"], errors="ignore")
     features["genre"] = features["genre"].astype("category")
@@ -44,10 +32,19 @@ def preprocess_features(data):
     genre_encoded = pd.get_dummies(features["genre"], prefix="genre")
 
     processed_data = pd.concat([features, genre_encoded, tags_encoded], axis=1)
-    return processed_data.drop(columns=["genre", "tags", "year"]), metadata
+    processed_data = processed_data.drop(
+        columns=["genre", "tags", "year"], errors="ignore"
+    )
+
+    scaler = MinMaxScaler()
+    processed_data = pd.DataFrame(
+        scaler.fit_transform(processed_data), columns=processed_data.columns
+    )
+
+    return processed_data, metadata
 
 
-def aggregate_user_preference(user_id, ratings, tracks, autoencoder):
+def aggregate_user_preference(user_id, ratings, tracks):
     """
     Aggregates user preferences by filtering the tracks based on user ratings and passing them through the autoencoder.
 
@@ -121,22 +118,6 @@ def average_intra_list_distance(items, distance_metric="cosine"):
     return np.mean(distances)
 
 
-# Train the autoencoder on training data
-def train_autoencoder(train_data, latent_dim):
-    input_shape = train_data.shape[1:]
-    autoencoder = Autoencoder(latent_dim, input_shape)
-    autoencoder.compile(optimizer="adam", loss="mean_squared_error")
-    autoencoder.fit(train_data, train_data, epochs=30, batch_size=512)
-    return autoencoder
-
-
-# Generate encoded representations of data
-def encode_data(autoencoder, data):
-    encoded_data = autoencoder.encoder.predict(data)
-    decoded_data = autoencoder.decoder.predict(encoded_data)
-    return encoded_data, decoded_data
-
-
 # Recommend similar tracks based on cosine similarity
 def sort_by_distance(input_feature, encoded_data, items):
     # Calculate similarity scores
@@ -181,7 +162,7 @@ def randomize_items(filtered_indices, filtered_scores, sorted_items):
 
 
 # Display recommendations
-def display_recommendations(track_id, encoded_data, test_data, items_with_metadata):
+def get_recommendations(track_id, encoded_data, items_with_metadata):
     similar_indices, similar_scores, item_with_metadata = sort_by_distance(
         track_id, encoded_data, items_with_metadata
     )
@@ -257,53 +238,58 @@ def get_diverse_recommendations(
     return indices, scores, meta_items_df, max_sim
 
 
+def load_data():
+    tracks_path = "../../remappings/data/Modified_Music_info.txt"
+    ratings_path = "../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt"
+    tracks = pd.read_csv(tracks_path, delimiter="\t")
+    ratings = pd.read_csv(ratings_path, delimiter="\t")
+    return tracks, ratings
+
+
+def autoencode_data(data, latent_dim=90):
+    train_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
+    autoencoder = Autoencoder(latent_dim, train_data, "")  # load the autoencoder
+    # autoencoder = Autoencoder(latent_dim, train_data)
+    # autoencoder.train()
+    # autoencoder.save("")
+    return autoencoder.predict(data)
+
+
 # Main function to execute the pipeline
 def main():
-    tracks_path = "../../remappings/data/Modified_Music_info.txt"
-    raw_tracks = load_track_features(tracks_path)
-
-    ratings_path = "../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt"
-    raw_ratings = load_track_features(ratings_path)
+    raw_tracks, raw_ratings = load_data()
 
     # Preprocess data
-    final_data, meta_data = preprocess_features(raw_tracks)
+    final_data, meta_data = preprocess_data(raw_tracks)
 
-    # Normalize and split data
-    data_normalized, scaler = prepare_data(final_data.to_numpy())
-    train_data, test_data = train_test_split(
-        data_normalized, test_size=0.2, random_state=42
-    )
-
-    # Train autoencoder
-    latent_dim = 90
-    autoencoder = train_autoencoder(train_data, latent_dim)
-
-    encoded_test, decoded_test = encode_data(autoencoder, data_normalized)
+    autoencoded_data = autoencode_data(final_data)
 
     # Convert decoded output to DataFrame
-    decoded_test_df = pd.DataFrame(decoded_test, columns=final_data.columns)
+    # Convert decoded output (which is a numpy array) to a DataFrame
+    autoencoded_data_with_headers = pd.DataFrame(
+        autoencoded_data, columns=final_data.columns
+    )
 
     # Combine decoded data with metadata
-    combined_data = pd.concat(
-        [meta_data.reset_index(drop=True), decoded_test_df], axis=1
+    autoencoded_data_with_metadata = pd.concat(
+        [meta_data.reset_index(drop=True), autoencoded_data_with_headers], axis=1
     )
 
     user_ids = get_all_user(raw_ratings)
     test_set = user_ids[0:10]
-    mean_ranking = RankingMetrics([],[],10)
+    mean_ranking = RankingMetrics()
 
     for user in test_set:
 
         input_feature = aggregate_user_preference(
             user_id=user,
             ratings=raw_ratings,
-            tracks=decoded_test_df,
-            autoencoder=autoencoder,
+            tracks=autoencoded_data_with_headers,
         )
         user_ratings = get_rated_list(user_id=user, ratings=raw_ratings)
 
-        similar_indices, diverse_indices = display_recommendations(
-            input_feature, decoded_test, data_normalized, combined_data
+        similar_indices, diverse_indices = get_recommendations(
+            input_feature, autoencoded_data, autoencoded_data_with_metadata
         )
 
         k = 10
@@ -318,7 +304,6 @@ def main():
         print(f"user: {user} Metrics Summary@{k}: {summary}")
 
     print(f"mean rating: Metrics Summary@{k}: {mean_ranking.metrics_summary()}")
-    
 
 
 if __name__ == "__main__":
