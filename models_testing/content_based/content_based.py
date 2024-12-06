@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 from custom_recommenders.autoencode_recommender import AutoencodeRecommender
@@ -5,6 +7,9 @@ from metrics.diversity_metrics import DiversityMetrics
 from metrics.ranking_metrics import RankingMetrics
 from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer
 from utils.user_profile_builder import UserProfileBuilder
+
+# Change working directory to the script's location
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
 def load_data():
