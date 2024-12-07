@@ -54,12 +54,13 @@ class Autoencoder(Model):
         """
         # Compute the reconstruction loss
         loss = self.autoencoder.evaluate(test_data, test_data, verbose=2)
-        print(f"Reconstruction Loss: {loss}")
 
         # Compute reconstruction errors for each sample
         reconstructed = self.autoencoder.predict(test_data)
         errors = tf.reduce_mean(
             tf.square(test_data - reconstructed), axis=tuple(range(1, test_data.ndim))
         )
+
+        print(f"Reconstruction Loss: {loss}")
 
         return loss, errors

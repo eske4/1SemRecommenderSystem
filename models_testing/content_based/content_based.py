@@ -97,7 +97,7 @@ def main():
         print(f"Diversity score: {diversity_score}")
 
         # Add user to the ranking metrics and display
-        ranking = RankingMetrics(indices, user_ratings, top_n)
+        ranking = RankingMetrics(indices, user_ratings)
         mean_ranking += ranking
         print(f"user {user} Metrics Summary@10: {ranking.metrics_summary()}")
 
