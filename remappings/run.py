@@ -18,4 +18,3 @@ for script in scripts:
         print(f"Output of {script}:\n{result.stdout}")
     except subprocess.CalledProcessError as e:
         print(f"Error calling {script}: {e.stderr}")
-        print("Probably missing the data set in root folder /data")
