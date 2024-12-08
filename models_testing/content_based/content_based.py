@@ -73,6 +73,8 @@ def main():
 
     # prepare for ranking
     mean_ranking = RankingMetrics()
+    diversity_count = 0
+    mean_diversity = 0
 
     for user in user_ids:
 
@@ -99,10 +101,13 @@ def main():
         # Add user to the ranking metrics and display
         ranking = RankingMetrics(indices, user_ratings)
         mean_ranking += ranking
+        diversity_count += 1
+        mean_diversity += diversity_score
         print(f"user {user} Metrics Summary@10: {ranking.metrics_summary()}")
 
     # Print the final score
     print(f"mean rating Metrics Summary@10: {mean_ranking.metrics_summary()}")
+    print(f"mean diversity score: {mean_diversity/diversity_count}")
 
 
 if __name__ == "__main__":
