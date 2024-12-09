@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model
-from sklearn.preprocessing import LabelEncoder
+
 
 
 
@@ -10,11 +10,7 @@ class Softmax(Model):
         super().__init__()
         self.X_train = X_train
         self.y_train = y_train
-        self.label_encoder = LabelEncoder()
-        if self.y_train is not None:
-            # Ensure y_train is encoded into proper class labels (0 to num_unique_tracks - 1)
-            self.y_train = self.label_encoder.fit_transform(self.y_train)
-            self.num_unique_tracks = len(np.unique(self.y_train))
+        self.num_unique_tracks = len(X_train) + len(y_train)
         self.shape = self.X_train.shape[1:] if self.X_train is not None else None
         self.softmax = None
         if path is not None:
