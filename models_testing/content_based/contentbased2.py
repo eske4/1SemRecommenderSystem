@@ -1,4 +1,5 @@
 import os
+
 import numpy as np
 import pandas as pd
 from custom_recommenders.autoencode_recommender import AutoencodeRecommender
@@ -14,12 +15,13 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 def load_data():
     return pd.read_csv(
-        "../../remappings/data/Modified_Music_info.txt", 
+        "../../remappings/data/Modified_Music_info.txt",
         delimiter="\t",
     ), pd.read_csv(
         "../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt",
         delimiter="\t",
     )
+
 
 def preprocess_data(data, scaler=MinMaxScaler()):
     meta = data[["track_id"]]
@@ -63,7 +65,7 @@ def main():
     track, ratings = load_data()
     tracks, meta, tracks_with_id = preprocess_data(track, StandardScaler())
     # Initialize softmax recommender
-    softmax_recommender = SoftmaxRecommender  (tracks_with_id)
+    softmax_recommender = SoftmaxRecommender(tracks_with_id)
 
     # Get 100 users for testings
     user_ids = UserProfileBuilder.get_all_users(ratings)[:100]
@@ -75,29 +77,31 @@ def main():
 
         top_n = 10
         # Get the average profile of the user tracks
-        input_feature = UserProfileBuilder.aggregate_user_preference(user, ratings, tracks)
+        input_feature = UserProfileBuilder.aggregate_user_preference(
+            user, ratings, tracks
+        )
 
         # Get the list of the users listened tracks
         user_ratings = UserProfileBuilder.get_rated_list(user, ratings)
 
         # Recommend with autoencoder
-        indices = softmax_recommender.recommend(
-            input_feature, top_n
-        )
+        indices = softmax_recommender.recommend(input_feature, top_n)
 
         # Select rows where 'track_id' matches the ones in indices
-        filtered_df = tracks_with_id[tracks_with_id['track_id'].isin(indices)]
+        filtered_df = tracks_with_id[tracks_with_id["track_id"].isin(indices)]
 
         # Drop the 'track_id' column to get just the feature columns
-        features_df = filtered_df.drop(columns=['track_id'])
+        features_df = filtered_df.drop(columns=["track_id"])
 
         # Convert the features to a list of lists (each list contains the features for one track)
         indices_features = features_df.values.tolist()
 
         # Calculate diversity_score AILD
-        diversity_score = DiversityMetrics.average_intra_list_distance(pd.DataFrame(indices_features))
+        diversity_score = DiversityMetrics.average_intra_list_distance(
+            pd.DataFrame(indices_features)
+        )
         print(f"Diversity score: {diversity_score}")
-        
+
         # Add user to the ranking metrics and display
         ranking = RankingMetrics(indices, user_ratings)
         mean_ranking += ranking
@@ -105,6 +109,7 @@ def main():
 
     # Print the final score
     print(f"mean rating Metrics Summary@10: {mean_ranking.metrics_summary()}")
+
 
 if __name__ == "__main__":
     main()
