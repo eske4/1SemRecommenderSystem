@@ -84,6 +84,10 @@ def main():
             user, ratings, autoencode_recommender.encoded_data
         )
 
+        input_feature2 = UserProfileBuilder.aggregate_user_preference_with_weight(
+            user, ratings, autoencode_recommender.encoded_data
+        )
+
         # Get the list of the users listened tracks
         user_ratings = UserProfileBuilder.get_rated_list(user, ratings)
 

@@ -39,6 +39,36 @@ class UserProfileBuilder:
         return np.mean(user_tracks, axis=0)
 
     @staticmethod
+    def aggregate_user_preference_with_weight(user_id, ratings, tracks):
+        """
+        Aggregates a user's preferences based on their ratings and the associated track features.
+
+        Parameters:
+            user_id (int): The user ID to filter the tracks.
+            ratings (pd.DataFrame): The ratings dataset containing user-item interactions.
+            tracks (pd.DataFrame): The tracks dataset containing track features.
+
+        Returns:
+            np.ndarray: A numerical vector representing the aggregated user profile.
+        """
+
+        # Filter user's ratings and corresponding tracks
+        user_ratings = ratings[ratings["user_id"] == user_id]
+        user_track_ids = user_ratings["track_id"].values
+        user_tracks = tracks.loc[user_track_ids]
+
+        # Scale and adjust playcount weights
+        weights = MinMaxScaler().fit_transform(user_ratings[["playcount"]]) + 1
+
+        # Apply weights to track features
+        user_tracks = user_tracks.mul(weights.flatten(), axis=0)
+
+        # Scale track features and aggregate by averaging
+        user_tracks = MinMaxScaler().fit_transform(user_tracks)
+
+        return np.mean(user_tracks, axis=0)
+
+    @staticmethod
     def get_all_users(ratings):
         """
         Retrieves all unique user IDs from the ratings dataset.
