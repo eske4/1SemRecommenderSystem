@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 
@@ -51,22 +52,29 @@ class UserProfileBuilder:
         Returns:
             np.ndarray: A numerical vector representing the aggregated user profile.
         """
-
         # Filter user's ratings and corresponding tracks
         user_ratings = ratings[ratings["user_id"] == user_id]
         user_track_ids = user_ratings["track_id"].values
+
+        # Ensure we match indices correctly to avoid errors
         user_tracks = tracks.loc[user_track_ids]
 
         # Scale and adjust playcount weights
         weights = MinMaxScaler().fit_transform(user_ratings[["playcount"]]) + 1
 
         # Apply weights to track features
-        user_tracks = user_tracks.mul(weights.flatten(), axis=0)
+        user_tracks_weighted = user_tracks.multiply(weights.flatten(), axis=0)
 
-        # Scale track features and aggregate by averaging
-        user_tracks = MinMaxScaler().fit_transform(user_tracks)
+        # Scale the track features, preserving headers and indices
+        scaler = MinMaxScaler()
+        user_tracks_scaled = pd.DataFrame(
+            scaler.fit_transform(user_tracks_weighted),
+            columns=user_tracks.columns,
+            index=user_tracks.index,
+        )
 
-        return np.mean(user_tracks, axis=0)
+        # Aggregate features by averaging across columns
+        return user_tracks_scaled.mean(axis=0)
 
     @staticmethod
     def get_all_users(ratings):
