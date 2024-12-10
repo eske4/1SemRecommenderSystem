@@ -1,6 +1,4 @@
 import numpy as np
-import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
 
 
 class UserProfileBuilder:
@@ -26,6 +24,7 @@ class UserProfileBuilder:
             ratings (pd.DataFrame): The ratings dataset containing user-item interactions.
             tracks (pd.DataFrame): The tracks dataset containing track features.
 
+
         Returns:
             np.ndarray: A numerical vector representing the aggregated user profile.
         """
@@ -38,6 +37,29 @@ class UserProfileBuilder:
 
         # Step 3: Aggregate features (e.g., by averaging)
         return np.mean(user_tracks, axis=0)
+
+    @staticmethod
+    def aggregate_user_preference_with_median(user_id, ratings, tracks):
+        """
+        Aggregates a user's preferences based on their ratings and the associated track features.
+
+        Parameters:
+            user_id (int): The user ID to filter the tracks.
+            ratings (pd.DataFrame): The ratings dataset containing user-item interactions.
+            tracks (pd.DataFrame): The tracks dataset containing track features.
+
+        Returns:
+            np.ndarray: A numerical vector representing the aggregated user profile.
+        """
+        # Step 1: Get the track IDs that the user has rated
+        user_ratings = ratings[ratings["user_id"] == user_id]
+        user_track_ids = user_ratings["track_id"].values
+
+        # Step 2: Select the track features corresponding to the rated tracks
+        user_tracks = tracks.iloc[user_track_ids]
+
+        # Step 3: Aggregate features (e.g., by averaging)
+        return np.median(user_tracks, axis=0)
 
     @staticmethod
     def aggregate_user_preference_with_weight(user_id, ratings, tracks):
@@ -59,22 +81,15 @@ class UserProfileBuilder:
         # Ensure we match indices correctly to avoid errors
         user_tracks = tracks.loc[user_track_ids]
 
-        # Scale and adjust playcount weights
-        weights = MinMaxScaler().fit_transform(user_ratings[["playcount"]]) + 1
+        # Normalize playcounts by dividing each by the sum of playcounts
+        playcounts = user_ratings["playcount"].values
+        normalized_weights = playcounts / np.sum(playcounts)
 
-        # Apply weights to track features
-        user_tracks_weighted = user_tracks.multiply(weights.flatten(), axis=0)
-
-        # Scale the track features, preserving headers and indices
-        scaler = MinMaxScaler()
-        user_tracks_scaled = pd.DataFrame(
-            scaler.fit_transform(user_tracks_weighted),
-            columns=user_tracks.columns,
-            index=user_tracks.index,
-        )
+        # Apply normalized weights to track features
+        user_tracks_weighted = user_tracks.multiply(normalized_weights, axis=0)
 
         # Aggregate features by averaging across columns
-        return user_tracks_scaled.mean(axis=0)
+        return user_tracks_weighted.mean(axis=0).to_numpy()
 
     @staticmethod
     def get_all_users(ratings):
@@ -89,7 +104,6 @@ class UserProfileBuilder:
         """
         return ratings["user_id"].unique()
 
-    @staticmethod
     def get_rated_list(user_id, ratings):
         """
         Retrieves the list of track IDs rated by a specific user and scales the playcount to relevancy.
@@ -104,11 +118,10 @@ class UserProfileBuilder:
         # Retrieve ratings for the specific user and create a copy to avoid setting on a slice
         user_ratings = ratings[ratings["user_id"] == user_id].copy()
 
-        # Initialize MinMaxScaler
-        scaler = MinMaxScaler()
+        playcount_sum = user_ratings["playcount"].sum()
 
-        # Scale the playcount (relevancy) between 0 and 1
-        user_ratings["score"] = scaler.fit_transform(user_ratings[["playcount"]])
+        # Scale playcounts to create relevancy scores
+        user_ratings["score"] = user_ratings["playcount"] / playcount_sum
 
         # Reset the index to avoid the old index being included as a column
         user_ratings = user_ratings.reset_index(drop=True)

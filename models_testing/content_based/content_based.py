@@ -84,7 +84,7 @@ def main():
             user, ratings, autoencode_recommender.encoded_data
         )
 
-        input_feature2 = UserProfileBuilder.aggregate_user_preference_with_weight(
+        input_feature = UserProfileBuilder.aggregate_user_preference_with_weight(
             user, ratings, autoencode_recommender.encoded_data
         )
 
