@@ -38,7 +38,7 @@ TOP_K10 = 10
 
 I_VALUE = 1
 
-# Model parameters (BPR & NMF)
+# Model parameters (BPR)
 NUM_FACTORS = 200
 NUM_EPOCHS = 100
 
@@ -371,14 +371,10 @@ for k in [TOP_K10, TOP_K25, TOP_K50]:
 # # NMF Model Train and prediction
 
 nmf = cornac.models.NMF(
-        k=NUM_FACTORS,
-        max_iter=NUM_EPOCHS,
-        learning_rate=0.01,
-        lambda_u=0.06,
-        lambda_v=0.06,
-        lambda_bu=0.02,
-        lambda_bi=0.02,
-        use_bias=False,
+        k=15,
+        max_iter=50,
+        learning_rate=0.005,
+        lambda_reg=0.06,
         verbose=True,
         seed=SEED,
     )

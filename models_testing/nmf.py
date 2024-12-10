@@ -8,6 +8,7 @@ from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_
 from recommenders.models.cornac.cornac_utils import predict_ranking
 from recommenders.utils.timer import Timer
 from recommenders.utils.constants import SEED
+from content_based.metrics.ranking_metrics import RankingMetrics
 from random import sample
 
 # Suppress all FutureWarning messages
@@ -22,7 +23,7 @@ COL_TRACK = "track_id"
 COL_COUNT = "playcount"
 
 TOP_K = 50
-NUM_FACTORS = 100
+NUM_FACTORS = 15
 NUM_EPOCHS = 50
 
 # Read from file
@@ -30,13 +31,13 @@ test = pd.read_csv(header=0,
                    delimiter="\t", 
                    filepath_or_buffer="../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt",
                    dtype={COL_TRACK: int, COL_USER: int, COL_COUNT: int},
-                   nrows=None
+                   nrows=20000
                    )
 train = pd.read_csv(header=0, 
                     delimiter="\t", 
                     filepath_or_buffer="../remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt",
                     dtype={COL_TRACK: int, COL_USER: int, COL_COUNT: int},
-                    nrows=None
+                    nrows=20000
                     )
 
 # Reorder columns to (User, Item, Rating) - expected order for Cornac
@@ -86,12 +87,8 @@ print('Number of items: {}'.format(train_set.num_items))
 nmf = cornac.models.NMF(
         k=NUM_FACTORS,
         max_iter=NUM_EPOCHS,
-        learning_rate=0.01,
-        lambda_u=0.06,
-        lambda_v=0.06,
-        lambda_bu=0.02,
-        lambda_bi=0.02,
-        use_bias=False,
+        learning_rate=0.005,
+        lambda_reg=0.06,
         verbose=True,
         seed=SEED,
     )
@@ -180,6 +177,10 @@ def statistics():
     # plt.show()
 
 #statistics()
+
+ranking = RankingMetrics()
+
+
 
 with Timer() as t:
     eval_map = map(

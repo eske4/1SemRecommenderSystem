@@ -353,18 +353,13 @@ bpr_results = generate_summary(train.size + test.size, "bpr", TOP_K, bpr_ranking
 # # NMF Model Train and prediction
 
 nmf = cornac.models.NMF(
-        k=NUM_FACTORS,
-        max_iter=NUM_EPOCHS,
-        learning_rate=0.01,
-        lambda_u=0.06,
-        lambda_v=0.06,
-        lambda_bu=0.02,
-        lambda_bi=0.02,
-        use_bias=False,
+        k=15,
+        max_iter=50,
+        learning_rate=0.005,
+        lambda_reg=0.06,
         verbose=True,
         seed=SEED,
     )
-
 with Timer() as t:
     nmf.fit(train_set)
 print("Took {} seconds for training.".format(t))
