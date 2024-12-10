@@ -1,12 +1,11 @@
 import os
-
 import numpy as np
 import pandas as pd
 from custom_recommenders.autoencode_recommender import AutoencodeRecommender
-from custom_recommenders.softmax_recommender import SoftmaxRecommender
+from custom_recommenders.cosine_recommender import CosineRecommender
 from metrics.diversity_metrics import DiversityMetrics
 from metrics.ranking_metrics import RankingMetrics
-from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer, StandardScaler
+from sklearn.preprocessing import MinMaxScaler, MultiLabelBinarizer
 from utils.user_profile_builder import UserProfileBuilder
 
 # Change working directory to the script's location
@@ -15,16 +14,18 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 def load_data():
     return pd.read_csv(
-        "../../remappings/data/Modified_Music_info.txt",
-        delimiter="\t",
+        "../../remappings/data/Modified_Music_info.txt", delimiter="\t"
     ), pd.read_csv(
         "../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt",
+        delimiter="\t",
+    ), pd.read_csv(
+        "../../remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt",
         delimiter="\t",
     )
 
 
 def preprocess_data(data, scaler=MinMaxScaler()):
-    meta = data[["track_id"]]
+    meta = data[["name", "artist", "track_id"]]
     features = data.drop(columns=["name", "artist", "track_id"], errors="ignore")
     features["genre"] = features["genre"].astype("category")
 
@@ -55,60 +56,60 @@ def preprocess_data(data, scaler=MinMaxScaler()):
     processed_data = pd.DataFrame(
         scaler.fit_transform(processed_data), columns=processed_data.columns
     )
-    merged_data = pd.merge(meta, processed_data, left_index=True, right_index=True)
 
-    return processed_data, meta, merged_data
+    return processed_data, meta
 
 
 def main():
+
     # Load and process the data
-    track, ratings = load_data()
-    tracks, meta, tracks_with_id = preprocess_data(track, StandardScaler())
-    # Initialize softmax recommender
-    softmax_recommender = SoftmaxRecommender(tracks_with_id)
+    tracks, test_rating, train_rating = load_data()
+    tracks, meta = preprocess_data(tracks)
+
+    # Initialize recommender
+    autoencode_recommender = CosineRecommender(
+        data=tracks, meta_data=meta, user_data=train_rating
+    )
 
     # Get 100 users for testings
-    user_ids = UserProfileBuilder.get_all_users(ratings)[:100]
+    user_ids = UserProfileBuilder.get_all_users(test_rating)[:1000]
 
     # prepare for ranking
     mean_ranking = RankingMetrics()
+    diversity_count = 0
+    mean_diversity = 0
 
     for user in user_ids:
 
         top_n = 10
         # Get the average profile of the user tracks
         input_feature = UserProfileBuilder.aggregate_user_preference(
-            user, ratings, tracks
+            user, train_rating, tracks
         )
 
         # Get the list of the users listened tracks
-        user_ratings = UserProfileBuilder.get_rated_list(user, ratings)
+        user_ratings = UserProfileBuilder.get_rated_list(user, test_rating)
 
         # Recommend with autoencoder
-        indices = softmax_recommender.recommend(input_feature, top_n)
-
-        # Select rows where 'track_id' matches the ones in indices
-        filtered_df = tracks_with_id[tracks_with_id["track_id"].isin(indices)]
-
-        # Drop the 'track_id' column to get just the feature columns
-        features_df = filtered_df.drop(columns=["track_id"])
-
-        # Convert the features to a list of lists (each list contains the features for one track)
-        indices_features = features_df.values.tolist()
-
+        indices, similar_items = autoencode_recommender.recommend_similar_items(
+            input_feature, user, top_n=top_n
+        )
         # Calculate diversity_score AILD
         diversity_score = DiversityMetrics.average_intra_list_distance(
-            pd.DataFrame(indices_features)
+            pd.DataFrame(similar_items).drop(columns=["name", "artist", "track_id"])
         )
         print(f"Diversity score: {diversity_score}")
 
         # Add user to the ranking metrics and display
         ranking = RankingMetrics(indices, user_ratings)
         mean_ranking += ranking
+        diversity_count += 1
+        mean_diversity += diversity_score
         print(f"user {user} Metrics Summary@10: {ranking.metrics_summary()}")
 
     # Print the final score
     print(f"mean rating Metrics Summary@10: {mean_ranking.metrics_summary()}")
+    print(f"mean diversity score: {mean_diversity/diversity_count}")
 
 
 if __name__ == "__main__":
