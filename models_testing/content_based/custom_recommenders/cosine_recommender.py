@@ -6,11 +6,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 class CosineRecommender:
     def __init__(self, data: pd.DataFrame = None , meta_data: pd.DataFrame = None, user_data: pd.DataFrame = None):
-        self.tracks_data = data
+        self.data = data
         self.meta_data = meta_data
         self.user_data = user_data
         self.tracks_data_with_metadata = pd.concat(
-            [self.meta_data.reset_index(drop=True), self.tracks_data], axis=1
+            [self.meta_data.reset_index(drop=True), self.data], axis=1
         )
         
     def __sort_by_distance(self, input_feature, tracks_data, ):
@@ -20,12 +20,13 @@ class CosineRecommender:
 
     def recommend_similar_items(self, input_feature, user_id, top_n=None):
         indices= self.__sort_by_distance(
-            input_feature, self.tracks_data
+            input_feature, self.data
         )
         if user_id:
             user_track = self.user_data[self.user_data['user_id'] == user_id]['track_id'].values
-            print(indices)
-            indices = [index for index in indices if index not in user_track]
+            length = top_n + len(user_track)
+            reduced_indicies = indices[:length]
+            filtered_indices = [item for item in reduced_indicies if item not in user_track]
         if top_n:
-            indices = indices[:top_n]
-        return indices, self.tracks_data_with_metadata.iloc[indices]
+            final_indices = filtered_indices[:top_n]
+        return final_indices, self.tracks_data_with_metadata.iloc[final_indices]
