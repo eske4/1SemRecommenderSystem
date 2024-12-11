@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from lenskit import topn
-from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_at_k, recall_at_k
+from recommenders.evaluation.python_evaluation import map, ndcg_at_k, precision_at_k, recall_at_k, diversity
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -9,6 +9,8 @@ class ContentEvaluation:
     def __init__(self):
         self.truth_data = pd.read_csv("../../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt", delimiter="\t",)
         self.truth_data.rename(columns={'track_id': 'item', 'user_id': 'user'}, inplace=True)
+        self.train_data = pd.read_csv("../../remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt", delimiter="\t",)
+        self.train_data.rename(columns={'track_id': 'item', 'user_id': 'user'}, inplace=True)
 
     def LenskitEvaluation(self, predictions: pd.DataFrame) -> tuple:
         '''
@@ -61,6 +63,8 @@ class ContentEvaluation:
         predictions['item'] = predictions['item'].astype(str)
         self.truth_data['user'] = self.truth_data['user'].astype(str)
         self.truth_data['item'] = self.truth_data['item'].astype(str)
+        self.train_data['user'] = self.train_data['user'].astype(str)
+        self.train_data['item'] = self.train_data['item'].astype(str)
 
         # Rename 'rank' column to 'prediction'
         predictions = predictions.rename(columns={'rank': 'prediction'})
@@ -80,10 +84,15 @@ class ContentEvaluation:
         )
         map_score = map(
             self.truth_data, predictions, 
-            col_user="user", col_item="item", col_rating="playcount", col_prediction="prediction", k=k_value
+            col_user="user", col_item="item", col_prediction="prediction", k=k_value, relevancy_method=None
         )
 
-        return (precision_score, recall_score, ndcg_score, map_score)
+        eval_diversity = diversity(train_df=self.train_data,
+                           reco_df=predictions,
+                           col_user="user",
+                           col_item="item")
+
+        return (precision_score, recall_score, ndcg_score, map_score, eval_diversity)
 
 
     

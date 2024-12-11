@@ -6,10 +6,11 @@ from sklearn.model_selection import train_test_split
 
 
 class AutoencodeRecommender:
-    def __init__(self, data=None, latent_dim=90, meta_data=None):
+    def __init__(self, data: pd.DataFrame = None, latent_dim: int = 90, meta_data: pd.DataFrame = None, user_data: pd.DataFrame = None):
         self.data = data  # Store the input data
         self.meta_data = meta_data  # Store metadata
         self.latent_dim = latent_dim  # Store latent dimension
+        self.user_data = user_data
         self.encoded_data = self.autoencode_data()  # Encode data using autoencoder
         self.encoded_data_with_metadata = pd.concat(
             [self.meta_data.reset_index(drop=True), self.encoded_data], axis=1
@@ -23,22 +24,25 @@ class AutoencodeRecommender:
         autoencoder.validate(test_data)
         return pd.DataFrame(autoencoder.predict(self.data), columns=self.data.columns)
 
-    def __sort_by_distance(self, input_feature, encoded_data, items):
-        sim_scores = cosine_similarity([input_feature], encoded_data)[0]
+    def __sort_by_distance(self, input_feature, tracks_data, ):
+        sim_scores = cosine_similarity([input_feature], tracks_data)[0]
         sorted_indices = np.argsort(sim_scores)[::-1]
-        sorted_scores = sim_scores[sorted_indices]
-        sorted_items = items.iloc[sorted_indices]
-        return sorted_indices, sorted_scores, sorted_items
+        return sorted_indices
 
-    def recommend_similar_items(self, input_feature, top_n=None):
-        indices, scores, items = self.__sort_by_distance(
-            input_feature, self.encoded_data, self.encoded_data_with_metadata
+    def recommend_similar_items(self, input_feature, user_id, top_n=None):
+        indices= self.__sort_by_distance(
+            input_feature, self.encoded_data
         )
+        if user_id:
+            user_track = self.user_data[self.user_data['user_id'] == user_id]['track_id'].values
+            length = top_n + len(user_track)
+            reduced_indicies = indices[:length]
+            filtered_indices = [item for item in reduced_indicies if item not in user_track]
         if top_n:
-            indices = indices[:top_n]
-            scores = scores[:top_n]
-            items = items.iloc[:top_n]
-        return indices, scores, items
+            final_indices = filtered_indices[:top_n]
+        return final_indices, self.encoded_data_with_metadata.iloc[final_indices]
+    
+    
 
     def recommend_similar_items_within_range(
         self, min_score=0.5, max_score=0.7, input_feature=None, top_n=None
