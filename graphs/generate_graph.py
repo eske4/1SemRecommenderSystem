@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # Read your CSV file
-df = pd.read_csv('graphs/summary_res.csv', sep=',')  
+df = pd.read_csv('summary_res.csv', sep=',')  
 
 # Drop the "Data" and "novelty" columns
 df = df.drop(columns=["Data", "novelty"], errors='ignore')
@@ -82,7 +82,7 @@ plot_metric_line("Recall@k", "Recall@K")
 
 plot_metric_line("NDCG@k", "NDCG@K")
 
-plot_metric_line("Mean average precision", "Mean Average Precision")
+plot_metric_line("MAP", "Mean Average Precision")
 
 def plot_diversity(y_label="Diversity by Algorithm"):
     plt.figure(figsize=(7, 5))
@@ -90,7 +90,7 @@ def plot_diversity(y_label="Diversity by Algorithm"):
     sns.barplot(
         data=df, 
         x="K", 
-        y="diversity", 
+        y="Diversity", 
         hue="Algo", 
         palette=palette
     )
