@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # Read your CSV file
-df = pd.read_csv('graphs/als_vs_bpr_vs_nmf_vs_random_with_multiple_k.csv', sep=',')  
+df = pd.read_csv('graphs/summary_res.csv', sep=',')  
 
 # Drop the "Data" and "novelty" columns
 df = df.drop(columns=["Data", "novelty"], errors='ignore')
