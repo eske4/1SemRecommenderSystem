@@ -380,10 +380,10 @@ for k in [TOP_K10, TOP_K25, TOP_K50]:
 # # NMF Model Train and prediction
 
 nmf = cornac.models.NMF(
-        k=15,
-        max_iter=50,
-        learning_rate=0.005,
-        lambda_reg=0.06,
+        k=NUM_FACTORS,
+        max_iter=NUM_EPOCHS,
+        learning_rate=0.01,
+        lambda_reg=0.001,
         verbose=True,
         seed=SEED,
     )
