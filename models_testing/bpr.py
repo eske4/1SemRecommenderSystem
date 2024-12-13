@@ -41,33 +41,15 @@ COL_COUNT = "playcount"
 test_listening_history = pd.read_csv(header=0, delimiter="\t", filepath_or_buffer="../remappings/data/dataset/test_listening_history_OverEqual_50_Interactions.txt")
 train_listening_history = pd.read_csv(header=0, delimiter="\t", filepath_or_buffer="../remappings/data/dataset/train_listening_history_OverEqual_50_Interactions.txt")
 
-# Change columns to correct place (user_id, track_id, playcount)
-track_test = test_listening_history["track_id"]
-user_test = test_listening_history["user_id"]
-
-track_train = train_listening_history["track_id"]
-user_train = train_listening_history["user_id"]
-
-test_listening_history["track_id"] = user_test
-test_listening_history["user_id"] = track_test
-
-train_listening_history["track_id"] = user_train
-train_listening_history["user_id"] = track_train
-
-test_listening_history.columns = [COL_USER, COL_TRACK, COL_COUNT]
-train_listening_history.columns = [COL_USER, COL_TRACK, COL_COUNT]
+# Reorder columns to (User, Item, Rating) - expected order for Cornac
+train = train_listening_history[[COL_USER, COL_TRACK, COL_COUNT]]
+test = test_listening_history[[COL_USER, COL_TRACK, COL_COUNT]]
 
 # %% [markdown]
 # ### Split data
 
 # %%
 train, test = train_listening_history, test_listening_history
-
-# Set the alpha value for the confidence transformation
-alpha = 1
-
-# Transform playcount to confidence in the training data only
-train["confidence"] = 1 + alpha * np.log(1 + train[COL_COUNT])
 
 # %% [markdown]
 # ## Build a Cornac Dataset
@@ -151,16 +133,10 @@ eval_diversity = diversity(train_df=train,
                            col_user=COL_USER,
                            col_item=COL_TRACK)
 
-eval_novelty = novelty(train_df=train,
-                       reco_df=top_k_rec,
-                       col_user=COL_USER,
-                       col_item=COL_TRACK)
-
 # Print evaluation metrics, including diversity
-print("Precision@K Spark:\t%f" % eval_precision,
-      "Recall@K Spark:\t%f" % eval_recall,
-      "NDCG Spark:\t%f" % eval_ndcg,
-      "Diversity Spark:\t%f" % eval_diversity,
-      "Novelty Spark:\t%f" % eval_novelty, sep='\n')
+print("Precision@K:\t%f" % eval_precision,
+      "Recall@K:\t%f" % eval_recall,
+      "NDCG:\t%f" % eval_ndcg,
+      "Diversity Collab:\t%f" % eval_diversity, sep='\n')
 
 

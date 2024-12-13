@@ -142,7 +142,7 @@ def ROEM(predictions, userCol = COL_USER, itemCol = COL_TRACK, ratingCol = COL_C
   predictions.createOrReplaceTempView("predictions")
   
   # Sum of total number of plays of all songs
-  denominator = predictions.groupBy().sum(ratingCol).collect()[0][0]
+  denominator = predictions.groupBy().sum(ratingCol).collect()[0][0]    
 
   # Calculating rankings of songs predictions by user
   spark.sql("SELECT " + userCol + " , " + ratingCol + " , PERCENT_RANK() OVER (PARTITION BY " + userCol + " ORDER BY prediction DESC) AS rank FROM predictions").createOrReplaceTempView("rankings")
@@ -154,41 +154,41 @@ def ROEM(predictions, userCol = COL_USER, itemCol = COL_TRACK, ratingCol = COL_C
   return performance
 
 # %%
-# # Building 5 folds within the training set.
-# train1, train2, train3, train4, train5 = train.randomSplit([0.2, 0.2, 0.2, 0.2, 0.2], seed = 1)
-# fold1 = train2.union(train3).union(train4).union(train5)
-# fold2 = train3.union(train4).union(train5).union(train1)
-# fold3 = train4.union(train5).union(train1).union(train2)
-# fold4 = train5.union(train1).union(train2).union(train3)
-# fold5 = train1.union(train2).union(train3).union(train4)
+# Building 5 folds within the training set.
+train1, train2, train3, train4, train5 = train.randomSplit([0.2, 0.2, 0.2, 0.2, 0.2], seed = 1)
+fold1 = train2.union(train3).union(train4).union(train5)
+fold2 = train3.union(train4).union(train5).union(train1)
+fold3 = train4.union(train5).union(train1).union(train2)
+fold4 = train5.union(train1).union(train2).union(train3)
+fold5 = train1.union(train2).union(train3).union(train4)
 
-# foldlist = [(fold1, train1), (fold2, train2), (fold3, train3), (fold4, train4), (fold5, train5)]
+foldlist = [(fold1, train1), (fold2, train2), (fold3, train3), (fold4, train4), (fold5, train5)]
 
-# # Empty list to fill with ROEMs from each model
-# ROEMS = []
+# Empty list to fill with ROEMs from each model
+ROEMS = []
 
-# # Loops through all models and all folds
-# for model in model_list:
-#     for ft_pair in foldlist:
+# Loops through all models and all folds
+for model in model_list:
+    for ft_pair in foldlist:
 
-#         # Fits model to fold within training data
-#         fitted_model = model.fit(ft_pair[0])
+        # Fits model to fold within training data
+        fitted_model = model.fit(ft_pair[0])
 
-#         # Generates predictions using fitted_model on respective CV test data
-#         predictions = fitted_model.transform(ft_pair[1])
+        # Generates predictions using fitted_model on respective CV test data
+        predictions = fitted_model.transform(ft_pair[1])
 
-#         # Generates and prints a ROEM metric CV test data
-#         r = ROEM(predictions)
-#         print ("ROEM: ", r)
+        # Generates and prints a ROEM metric CV test data
+        r = ROEM(predictions)
+        print ("ROEM: ", r)
 
-#     # Fits model to all of training data and generates preds for test data
-#     v_fitted_model = model.fit(train)
-#     v_predictions = v_fitted_model.transform(test)
-#     v_ROEM = ROEM(v_predictions)
+    # Fits model to all of training data and generates preds for test data
+    v_fitted_model = model.fit(train)
+    v_predictions = v_fitted_model.transform(test)
+    v_ROEM = ROEM(v_predictions)
 
-#     # Adds validation ROEM to ROEM list
-#     ROEMS.append(v_ROEM)
-#     print ("Validation ROEM: ", v_ROEM)
+    # Adds validation ROEM to ROEM list
+    ROEMS.append(v_ROEM)
+    print ("Validation ROEM: ", v_ROEM)
 
 # %%
 # Extract the best_model
