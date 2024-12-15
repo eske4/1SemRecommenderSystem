@@ -84,6 +84,8 @@ plot_metric_line("NDCG@k", "NDCG@K")
 
 plot_metric_line("MAP", "Mean Average Precision")
 
+plot_metric_line("Hit@k", "Hit@K")
+
 def plot_diversity(y_label="Diversity by Algorithm"):
     plt.figure(figsize=(7, 5))
     

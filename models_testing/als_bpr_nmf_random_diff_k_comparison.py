@@ -54,10 +54,79 @@ COL_COUNT = "playcount"
 # Usable for pySpark. To test with bpr need to use recommenders.utils.python_evaluation functions
 
 # %%
-def get_ranking_results_spark(ranking_eval):
+
+def calculate_hit_at_k(test, top_k_rec, user_col=COL_USER, item_col=COL_TRACK):
+    """
+    Calculate Hit@K for top-K recommendations.
+
+    Args:
+        top_k_rec (pd.DataFrame): DataFrame containing top-K recommendations with columns [user_col, item_col].
+        test_set (pd.DataFrame): DataFrame containing the ground truth with columns [user_col, item_col].
+        user_col (str): Column name for user IDs.
+        item_col (str): Column name for item IDs.
+
+    Returns:
+        float: Hit@K value.
+    """
+    # Create a dictionary mapping users to their relevant items
+    test_dict = test.groupby(user_col)[item_col].apply(set).to_dict()
+
+    # Check hits
+    hits = sum(
+        any(item in test_dict[user] for item in group[item_col].values)
+        for user, group in top_k_rec.groupby(user_col)
+        if user in test_dict
+    )
+
+    # Total number of users in the test set
+    total_users = len(test_dict)
+
+    # Calculate Hit@K
+    hit_rate = hits / total_users
+
+    return hit_rate
+
+def calculate_hit_at_k_spark(test, top_k_rec, user_col=COL_USER, item_col=COL_TRACK):
+    """
+    Calculate Hit@K for top-K recommendations using PySpark DataFrame.
+
+    Args:
+        test (pyspark.sql.DataFrame): Spark DataFrame containing the ground truth with columns [user_col, item_col].
+        top_k_rec (pyspark.sql.DataFrame): Spark DataFrame containing top-K recommendations with columns [user_col, item_col].
+        user_col (str): Column name for user IDs.
+        item_col (str): Column name for item IDs.
+
+    Returns:
+        float: Hit@K value.
+    """
+    # Create a DataFrame mapping users to their relevant items as a set
+    test_items = test.groupBy(user_col).agg(F.collect_set(item_col).alias("relevant_items"))
+
+    # Join the top_k recommendations with the test set
+    joined = top_k_rec.join(test_items, on=user_col, how="inner")
+
+    # Check for hits (intersection of recommended and relevant items)
+    hit_check = joined.withColumn(
+        "hit",
+        F.size(F.array_intersect(F.collect_list(item_col).over(Window.partitionBy(user_col)), F.col("relevant_items"))) > 0
+    )
+
+    # Count the number of users with at least one hit
+    hits = hit_check.filter(F.col("hit")).select(user_col).distinct().count()
+
+    # Total number of users in the test set
+    total_users = test.select(user_col).distinct().count()
+
+    # Calculate Hit@K
+    hit_rate = hits / total_users if total_users > 0 else 0.0
+
+    return hit_rate
+
+def get_ranking_results_spark(ranking_eval, top_k_rec):
     metrics = {
         "Precision@k": ranking_eval.precision_at_k(),
         "Recall@k": ranking_eval.recall_at_k(),
+        "Hit@k": calculate_hit_at_k_spark(ranking_eval.rating_true, top_k_rec),
         "NDCG@k": ranking_eval.ndcg_at_k(),
         "Mean average precision": ranking_eval.map_at_k()
       
@@ -78,6 +147,7 @@ def get_ranking_results_python(test, top_k_rec_bpr, k):
                           col_prediction='prediction', 
                           k=k, 
                           relevancy_method=None),
+        "Hit@k": calculate_hit_at_k(test, top_k_rec_bpr),
         "NDCG@k": py_eval.ndcg_at_k(test, top_k_rec_bpr, 
                       col_user=COL_USER, 
                       col_item=COL_TRACK, 
@@ -90,9 +160,8 @@ def get_ranking_results_python(test, top_k_rec_bpr, k):
                col_item=COL_TRACK, 
                col_prediction='prediction', 
                k=k,
-               relevancy_method=None)
-      
-    }
+               relevancy_method=None),
+                }
     return metrics 
 
 def get_diversity_results_spark(diversity_eval):
@@ -119,7 +188,7 @@ def get_diversity_results_python(train, top_k_rec_bpr):
 # ## Create the results dataframe
 
 # %%
-cols = ["Data", "Algo", "K", "Precision@k", "Recall@k", "NDCG@k", "Mean average precision","novelty", "diversity"]
+cols = ["Data", "Algo", "K", "Precision@k", "Recall@k", "Hit@k", "NDCG@k", "Mean average precision","novelty", "diversity"]
 df_results = pd.DataFrame(columns=cols)
 
 # %% [markdown]
@@ -132,7 +201,8 @@ def generate_summary(data, algo, k, ranking_metrics, diversity_metrics):
     if ranking_metrics is None:
         ranking_metrics = {           
             "Precision@k": np.nan,
-            "Recall@k": np.nan,            
+            "Recall@k": np.nan,
+            "Hit@k": np.nan,            
             "nDCG@k": np.nan,
             "MAP": np.nan,
         }
@@ -296,7 +366,7 @@ for k in [TOP_K10, TOP_K25, TOP_K50]:
         relevancy_method="top_k"
     )
 
-    als_ranking_metrics = get_ranking_results_spark(als_ranking_eval)
+    als_ranking_metrics = get_ranking_results_spark(als_ranking_eval, top_k_reco_als)
 
     als_diversity_eval = SparkDiversityEvaluation(
         train_df = train, 
