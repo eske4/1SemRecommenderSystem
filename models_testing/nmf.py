@@ -84,14 +84,16 @@ train_set = cornac.data.Dataset.from_uir(train.itertuples(index=False), seed=SEE
 print('Number of users: {}'.format(train_set.num_users))
 print('Number of items: {}'.format(train_set.num_items))
 
+NUM_FACTORS = 200
+NUM_EPOCHS = 100
+
 nmf = cornac.models.NMF(
-        k=NUM_FACTORS,
-        max_iter=NUM_EPOCHS,
-        learning_rate=0.005,
-        lambda_reg=0.06,
-        verbose=True,
-        seed=SEED,
-    )
+    k=NUM_FACTORS,
+    max_iter=NUM_EPOCHS,
+    learning_rate=0.01,
+    lambda_reg=0.001,
+    verbose=True,
+    seed=SEED)
 
 with Timer() as t:
     nmf.fit(train_set)
