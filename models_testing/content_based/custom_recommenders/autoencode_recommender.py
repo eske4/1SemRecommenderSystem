@@ -6,11 +6,12 @@ from sklearn.model_selection import train_test_split
 
 
 class AutoencodeRecommender:
-    def __init__(self, data: pd.DataFrame = None, latent_dim: int = 90, meta_data: pd.DataFrame = None, user_data: pd.DataFrame = None):
+    def __init__(self, data: pd.DataFrame = None, latent_dim: int = 90, meta_data: pd.DataFrame = None, user_data: pd.DataFrame = None, user_data_test: pd.DataFrame = None):
         self.data = data  # Store the input data
         self.meta_data = meta_data  # Store metadata
         self.latent_dim = latent_dim  # Store latent dimension
         self.user_data = user_data
+        self.user_data_test = user_data_test
         self.encoded_data = self.autoencode_data()  # Encode data using autoencoder
         self.encoded_data_with_metadata = pd.concat(
             [self.meta_data.reset_index(drop=True), self.encoded_data], axis=1
@@ -37,7 +38,13 @@ class AutoencodeRecommender:
             user_track = self.user_data[self.user_data['user_id'] == user_id]['track_id'].values
             length = top_n + len(user_track)
             reduced_indicies = indices[:length]
+            track_ids_train = self.user_data['track_id'].unique()
+            track_ids_test = self.user_data_test['track_id'].unique()
+            combined_track_ids = np.unique(np.concatenate((track_ids_train,track_ids_test)))
+            # Filter out items that are in the user's track list
             filtered_indices = [item for item in reduced_indicies if item not in user_track]
+            # Further filter to include only items in track_ids_train
+            filtered_indices = [item for item in filtered_indices if item in combined_track_ids]
         if top_n:
             final_indices = filtered_indices[:top_n]
         return final_indices, self.encoded_data_with_metadata.iloc[final_indices]

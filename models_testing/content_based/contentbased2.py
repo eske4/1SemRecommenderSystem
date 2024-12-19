@@ -72,9 +72,6 @@ def preprocess_data(data, scaler=MinMaxScaler()):
 
     return processed_data, meta
 
-
-
-
 def main():
     # Load and process the data
     music_dataset, test_user_data, train_user_data = load_data()
@@ -82,21 +79,16 @@ def main():
 
 
     # Initialize recommenders
-    autoencode_recommender = AutoencodeRecommender(                             
-        data=feature_data, meta_data=meta_data, user_data=train_user_data 
-    )
+    
+    #autoencode_recommender = AutoencodeRecommender(data=feature_data, meta_data=meta_data, user_data=train_user_data, user_data_test=test_user_data)
 
-    cosine_recommender = CosineRecommender(
-        data=feature_data, meta_data=meta_data, user_data=train_user_data 
-    )
+    cosine_recommender = CosineRecommender(data=feature_data, meta_data=meta_data, user_data=train_user_data, user_data_test=test_user_data)
 
-    softmax_recommender = SoftmaxRecommender(
-        data=feature_data, meta_data=meta_data, user_data=train_user_data 
-    )
+    #softmax_recommender = SoftmaxRecommender(data=feature_data, meta_data=meta_data, user_data=train_user_data)
 
 
     # Get user ids for testing
-    user_ids = UserProfileBuilder.get_all_users(test_user_data)
+    user_ids = UserProfileBuilder.get_all_users(test_user_data)[:100]
 
     # prepare for ranking
     mean_ranking = RankingMetrics()
@@ -124,10 +116,10 @@ def main():
         #predicted_track_ids, predicted_track_features = autoencode_recommender.recommend_similar_items(input_feature, user_id=user, top_n=top_k)
         
         # Recommend with cosine
-        #predicted_track_ids, predicted_track_features = cosine_recommender.recommend_similar_items(input_feature, user_id=user, top_n=top_k)
+        predicted_track_ids, predicted_track_features = cosine_recommender.recommend_similar_items(input_feature, user_id=user, top_n=top_k)
         
         # Recommend with softmax 
-        predicted_track_ids, predicted_track_features = softmax_recommender.recommend(input_feature, user_id=user, top_n=top_k)
+        #predicted_track_ids, predicted_track_features = softmax_recommender.recommend(input_feature, user_id=user, top_n=top_k)
 
 
         prediction_data = pd.DataFrame({
@@ -165,10 +157,6 @@ def main():
        
     presicion, recall, ndgc, map, diversity= evaluation.RecommenderEvaluation(all_prediction_data, top_k)
     print (f"RECOMMENDER EVALUATION: precision@k: ", presicion,"recall@k: ", recall, "ndgc: ", ndgc, "map: ", map, "diversity: ",diversity )
-
-
-
-
 
 
 if __name__ == "__main__":
